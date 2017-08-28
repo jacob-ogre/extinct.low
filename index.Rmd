@@ -1,5 +1,5 @@
 ---
-title: "Extinct and declining species"
+title: "Extinct and declining ESA-listed species"
 author: "Defenders of Wildlife"
 date: "`r Sys.Date()`"
 output:
@@ -17,18 +17,27 @@ output:
 
 <script async defer src="https://hypothes.is/embed.js"></script>
 
-library(stringr)
+```{r setup, echo = FALSE, message=FALSE}
 library(dplyr)
+library(stringr)
+library(us.geonames)
 
 src <- "~/Downloads/five_year_review"
 fils <- list.files(src, full.names = TRUE, recursive = TRUE)
 
 terms <- c(
-  "possibly extinct",
-  "probably extinct",
-  "likely extinct",
-  "may be extinct",
-  "no known individuals",
-  "no populations are known",
-  "no individuals known",
+  "(possibly|probably|is|likely|may be) extinct",
+  "no( known)* individuals",
+  "no (populations|individuals)( are)* known"
+)
+```
 
+```{r proc, echo = FALSE}
+proc_file <- function(f) {
+  text <- get_text(f)
+  mats <- list("character", length(terms))
+  for(i in 1:length(terms)) {
+    mats[[i]] <- str_match_all()
+  }
+}
+```
