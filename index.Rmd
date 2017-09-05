@@ -13,31 +13,424 @@ output:
     toc: true
     toc_depth: 4
     toc_float: true
+editor_options: 
+  chunk_output_type: console
 ---
 
 <script async defer src="https://hypothes.is/embed.js"></script>
 
 ```{r setup, echo = FALSE, message=FALSE}
 library(dplyr)
+library(ecosscraper)
+library(fuzzyjoin)
+library(ggplot2)
+library(parallel)
+library(rio)
 library(stringr)
+library(tokenizers)
 library(us.geonames)
 
 src <- "~/Downloads/five_year_review"
 fils <- list.files(src, full.names = TRUE, recursive = TRUE)
 
 terms <- c(
-  "(possibly|probably|is|likely|may be) extinct",
-  "no( known)* individuals",
-  "no (populations|individuals)( are)* known"
+  "(possibly|may be|have become) extinct",
+  "(certainly being|probably|is|likely|probably being) extinct",
+  "no (populations|individuals)( are)* known",
+  "no( known| living)* individuals",
+  "extinct in( the)* wild",
+  "last (seen|observed|found) in [0-9oOiI]+",
+  "functionally extinct"
 )
 ```
 
 ```{r proc, echo = FALSE}
 proc_file <- function(f) {
+  cat(paste("\nProcessing:", basename(f), "\n"))
   text <- get_text(f)
-  mats <- list("character", length(terms))
+  sent <- tokenize_sentences(text, lowercase = TRUE, simplify = TRUE)
+  res <- data_frame(file = NA, patt = NA, doc = NA, mats = NA)
   for(i in 1:length(terms)) {
-    mats[[i]] <- str_match_all()
+    mat <- grep(sent, pattern = terms[i], fixed = FALSE, value = TRUE)
+    nhit <- length(mat)
+    if(nhit > 0) {
+      resi <- data_frame(file = rep(f, nhit), 
+                         doc = rep(basename(f), nhit),
+                         patt = rep(i, nhit), 
+                         mats = mat)
+    } else {
+      resi <- data_frame(file = f, patt = i, doc = basename(f), mats = NA)
+    }
+    res <- rbind(res, resi)
   }
+  return(res)
 }
+
+t1 <- parallel::mclapply(fils, proc_file, mc.cores = 3, mc.preschedule = FALSE)
+ext_pat <- bind_rows(t1) %>% filter(!is.na(mats))
+last_seen <- filter(ext_pat, patt == 6)
+func_exct <- filter(ext_pat, patt == 7)
+```
+
+The number of 5-year reviews that include an extinction phrase, which is a 
+lower bound for the number of species whose review includes an extinction
+phrase:
+
+```{r echo=FALSE}
+length(unique(ext_pat$doc))
+```
+
+I would like to know which species this includes and where those species are
+found, so will do a couple of joins.
+
+```{r echo = FALSE}
+load("/Users/jacobmalcom/Downloads/ECOS_species_tables_2016-12-17.rda")
+head(fiveyr_table)
+fiveyr_table$doc <- basename(fiveyr_table$Doc_Link) %>% 
+  str_replace_all(pattern = "pdf$", replacement = "txt")
+
+cnt_occ <- readr::read_tsv("~/Downloads/EndSp_county_occurrences.tsv")
+
+w_spp <- left_join(ext_pat, fiveyr_table, by = "doc")
+w_co <- left_join(w_spp, cnt_occ, by = c("Species" = "SCI"))
+
+spp_w_st <- distinct(w_co, Species, STATE)
+VA_spp <- filter(w_co, STATE == "Virginia")
+unique(VA_spp$Species)
+```
+
+
+```{r recplan_BAS}
+txt <- paste(readLines("~/Downloads/fiveyr_recplan_BAS.txt"), collapse = " ")
+parts <- str_split(txt, pattern = "--")[[1]]
+
+fnames <- str_match(parts, pattern = "^[ ]*[a-zA-Z0-9-_]*\\.txt") %>%
+  str_replace(pattern = "^ ", replacement = "")
+
+BAS_df <- data_frame(file = fnames, text = parts)
+BAS_df$doc <- basename(BAS_df$file)
+BAS_df$yes_checks <- grepl(parts, pattern = "X[-_ ]*Yes")
+BAS_df$no_checks <- grepl(parts, pattern = "X[-_ ]*No")
+BAS_df$anti_check <- !grepl(parts, pattern = "X[-_ ]*")
+BAS_df$ac_yes <- ifelse(
+  BAS_df$anti_check == TRUE & grepl(BAS_df$text, pattern = "Yes[.]*"),
+  TRUE,
+  FALSE
+)
+BAS_df$ac_no <- ifelse(
+  BAS_df$anti_check == TRUE & grepl(BAS_df$text, pattern = "No[.]*"),
+  TRUE,
+  FALSE
+)
+
+BAS_df$recplan_BAS <- ifelse(
+  BAS_df$yes_checks | BAS_df$ac_yes, 
+  TRUE, 
+  FALSE
+)
+
+BAS_miss <- setdiff(fiveyr_table$doc, BAS_df$doc)
+```
+
+# Listing status recommendations
+
+```{r echo=FALSE}
+patts <- c(
+  "[xX][-_ ]*( Yes, )*[dD]ownlist",
+  "[xX][-_ ]*( Yes, )*[rR]eclassify from Endangered to Threatened",
+  "[xX][-_ ]*( Yes, )*[uU]plist",
+  "[xX][-_ ]*( Yes, )*[rR]eclassify from Threatened to Endangered",
+  "[xX][-_ ]*( Yes, )*[dD]elist",
+  "[xX][a-z -_]*( No, )*[nN]o [cC]hange",
+  "Recommended [cC]lassification[[:print:]]+: Threatened",
+  "Recommended [cC]lassification[[:print:]]+: Endangered",
+  "Recommended [cC]lassification[[:print:]]+: No change",
+  "[xX][-_ ]*Extinct",
+  "[xX][-_ ]*Recovery",
+  "[xX][-_ ]*Original data"
+)
+
+proc_file <- function(f) {
+  cat(paste("\nProcessing:", basename(f), "\n"))
+  text <- readLines(f) %>% str_replace_all("[ ]{2,}", " ")
+  print(nchar(paste(text, collapse = "")))
+  res <- data_frame(file = NA, patt = NA, doc = NA, mats = NA)
+  for(i in 1:length(patts)) {
+    mat <- str_extract_all(text, pattern = patts[i], simplify = TRUE)
+    mat <- mat[mat != ""]
+    if(length(mat) > 0) print(mat)
+    nhit <- length(mat)
+    if(nhit > 0) {
+      resi <- data_frame(file = rep(f, nhit), 
+                         doc = rep(basename(f), nhit),
+                         patt = rep(i, nhit), 
+                         mats = mat)
+    } else {
+      resi <- data_frame(file = f, patt = i, doc = basename(f), mats = NA)
+    }
+    res <- rbind(res, resi)
+  }
+  return(res)
+}
+
+t1 <- mclapply(fils, proc_file, mc.cores = 3, mc.preschedule = FALSE)
+stat_rec <- bind_rows(t1) %>% 
+  filter(!is.na(file)) %>% 
+  distinct(doc, mats, .keep_all = TRUE)
+
+stat_rec$rec <- ifelse(
+  stat_rec$patt == 1 & is.na(stat_rec$mats),
+  NA,
+  ifelse(
+    stat_rec$patt == 1 | stat_rec$patt == 2,
+    "downlist",
+    ifelse(
+      stat_rec$patt == 3 | stat_rec$patt == 4,
+      "uplist",
+      ifelse(
+        stat_rec$patt == 5,
+        "delist",
+        ifelse(
+          stat_rec$patt == 6 | stat_rec$patt == 9,
+          "no change",
+          ifelse(
+            stat_rec$patt == 7,
+            "Unk change, T",
+            "Unk change, E"
+          )
+        )
+      )
+    )
+  )
+)
+stat_2 <- distinct(stat_rec, doc, rec, .keep_all = TRUE) %>%
+  arrange(-patt, mats)
+stat_2$dups <- duplicated(stat_2$doc)
+stat_3 <- filter(stat_2, dups == FALSE) %>%
+  arrange(doc)
+stat_3$delist_bc <- ifelse(
+  stat_3$patt == 10,
+  "extinct",
+  ifelse(
+    stat_3$patt == 11,
+    "recovery",
+    ifelse(
+      stat_3$patt == 12,
+      "error",
+      NA
+    )
+  )
+)
+stat_rec <- left_join(stat_3, fiveyr_table, by = "doc") %>%
+  select(-dups) %>%
+  distinct(doc, .keep_all = TRUE)
+
+delist <- filter(stat_rec, rec == "delist")
+uplist <- filter(stat_rec, rec == "uplist")
+downlist <- filter(stat_rec, rec == "downlist")
+
+table(stat_rec$rec, useNA = "always")
+table(stat_rec$delist_bc)
+```
+
+## Compare to biennial report
+
+```{r}
+rec_rep <- readxl::read_excel(
+  "~/Downloads/Recovery_Report_FY2013-2014_tabs.xlsx"
+)
+rec_rep$date_listed <- as.Date(rec_rep$date_listed)
+rec_rep$date_5yr <- ifelse(
+  rec_rep$date_5yr == "N/A", 
+  NA, 
+  as.numeric(rec_rep$date_5yr)
+)
+rec_rep$date_5yr <- as.Date(rec_rep$date_5yr, origin = "1899-12-30")
+rec_rep$plan_date <- ifelse(
+  rec_rep$plan_date == "N/A", 
+  NA, 
+  as.numeric(rec_rep$plan_date)
+)
+rec_rep$plan_date <- as.Date(rec_rep$plan_date, origin = "1899-12-30")
+rec_rep$fiveyr_rec <- str_replace_all(rec_rep$fiveyr_rec, "\\*$", "")
+rec_rep$fiveyr_rec <- str_replace_all(rec_rep$fiveyr_rec, "species", "Species")
+rec_rep$species <- str_replace_all(rec_rep$species, "\r\n", " ")
+rio::export(rec_rep, file = "~/Downloads/ESA_recovery_report_2013-2014.tsv")
+
+table(rec_rep$fiveyr_rec)
+spp_df <- data_frame(species = unique(cnt_occ$SCI))
+domest <- get_TECP_table() %>% filter_domestic()
+rr2 <- fuzzy_left_join(
+  rec_rep,
+  domest,
+  by = c("species" = "Scientific_Name"),
+  match_fun = function(v1, v2) {
+    stringr::str_detect(string = v1, pattern = v2)
+  }
+)
+
+no_sci <- filter(rr2, is.na(Scientific_Name))
+
+delist_ext <- filter(rec_rep, fiveyr_rec == "Delist due to extinction")
+
+
+```
+
+# PEP
+
+The [Plant Extinction Prevention (PEP) Program](http://www.pepphi.org/) in 
+Hawaii tracks the status of imperiled plants more closely than FWS documents,
+and should probably be considered authoritative for species covered by PEP.
+
+```{r}
+PEP <- readxl::read_excel("~/Downloads/HI_TE_plants_pep_list_20170316.xlsx")
+names(PEP) <- c("species", "distribution", "island_designation")
+PEP$island_designation <- ifelse(
+  PEP$island_designation == "PEP-Extinct in wild",
+  "PEP-Extinct in Wild",
+  PEP$island_designation
+)
+as_data_frame(table(PEP$island_designation))
+```
+
+How many HI plant species have been extirpated from one or more islands?
+
+```{r}
+extrp_wild <- filter(PEP, island_designation == "PEP-EXTIRPATED" |
+                       island_designation == "PEP-EXTIRPATED?")
+length(unique(extrp_wild$species))
+```
+
+And the distribution among species and islands?
+
+```{r}
+spXis_tab <- table(extrp_wild$species, extrp_wild$distribution)
+colSums(spXis_tab)
+sort(rowSums(spXis_tab), decreasing = TRUE)
+```
+
+Now let's join the PEP table with counties data to get an idea of how many
+species are not covered by PEP:
+
+```{r}
+hi_cnt <- filter(cnt_occ, STATE == "Hawaii")
+pep_miss <- setdiff(unique(hi_cnt$SCI), PEP$species)
+length(pep_miss)
+```
+
+So more are missing than are covered. How many have 5y reviews and what is the 
+distribution of those review dates?
+
+```{r}
+pep_miss_5y <- filter(fiveyr_table, fiveyr_table$Species %in% pep_miss)
+pep_miss_5y$Date <- as.Date(pep_miss_5y$Date)
+p <- qplot(
+  data = pep_miss_5y, 
+  x = pep_miss_5y$Date, 
+  geom = "histogram", 
+  bins = 9
+)
+plotly::ggplotly(p)
+
+
+```
+
+
+# Post manual checks
+
+```{r }
+manual <- readxl::read_excel("~/Downloads/extinct_patterns_raw.xlsx")
+dist <- filter(manual, true_positive == "T") %>% 
+  distinct(Species, .keep_all = TRUE) %>%
+  filter(!is.na(Date))
+
+comments <- manual %>%
+  distinct(Species, comment, .keep_all = TRUE)
+sort(table(comments$comment), decreasing = TRUE)
+```
+
+# recovery potential
+
+```{r echo=FALSE}
+patts <- c(
+  "potential for recovery",
+  "recovery potential"
+)
+
+proc_file <- function(f) {
+  cat(paste("\nProcessing:", basename(f), "\n"))
+  text <- readLines(f) %>% str_replace_all("[ ]{2,}", " ") %>% tolower()
+  print(nchar(paste(text, collapse = "")))
+  res <- data_frame(file = NA, patt = NA, doc = NA, mats = NA)
+  for(i in 1:length(patts)) {
+    mat <- grep(x = text, pattern = patts[i], value = TRUE)
+    mat <- mat[mat != ""]
+    if(length(mat) > 0) print(mat)
+    nhit <- length(mat)
+    if(nhit > 0) {
+      resi <- data_frame(file = rep(f, nhit), 
+                         doc = rep(basename(f), nhit),
+                         patt = rep(i, nhit), 
+                         mats = mat)
+    } else {
+      resi <- data_frame(file = f, patt = i, doc = basename(f), mats = NA)
+    }
+    res <- rbind(res, resi)
+  }
+  return(res)
+}
+
+potent <- mclapply(fils, proc_file, mc.cores = 3, mc.preschedule = FALSE)
+stat_potent <- bind_rows(potent) %>% 
+  filter(!is.na(file)) %>% 
+  filter(!is.na(mats)) %>% 
+  distinct(doc, mats, .keep_all = TRUE)
+
+
+low_potent <- filter(
+  stat_potent, 
+  grepl(stat_potent$mats, 
+        pattern = "low recovery potential|low potential (of|for) recovery"))
+low_potent <- left_join(low_potent, fiveyr_table, by = "doc")
+length(unique(hi_potent$Species))
+
+hi_potent <- filter(
+  stat_potent, 
+  grepl(stat_potent$mats, 
+        pattern = "high recovery potential|high potential (of|for) recovery"))
+hi_potent <- left_join(hi_potent, fiveyr_table, by = "doc")
+length(unique(hi_potent$Species))
+
+table(rr2$RPN)
+rr2$RPN_num <- str_replace_all(rr2$RPN, pattern = "C$", replacement = "")
+table(rr2$RPN_num)
+
+low_rec_pot_BR <- filter(rr2, RPN_num %in% c(4,5,6,10,11,12,16,17,18))
+hi_rec_pot_BR <- filter(rr2, !(RPN_num %in% c(4,5,6,10,11,12,16,17,18)))
+rr2$recov_potential <- ifelse(
+  rr2$RPN_num %in% c(4,5,6,10,11,12,16,17,18),
+  "low", "high"
+)
+rr2$threat_deg <- ifelse(
+  rr2$RPN_num %in% c(1:6),
+  "high",
+  ifelse(rr2$RPN_num %in% c(7:12),
+         "medium",
+         "low")
+)
+plotly::ggplotly(qplot(data = rr2, x = recov_potential, geom = "bar") +
+  facet_grid(. ~ threat_deg))
+
+# setdiff(low_rec_pot_BR$Scientific_Name, low_potent$Species)
+intersect(low_rec_pot_BR$Scientific_Name, hi_potent$Species) %>%
+  setdiff(low_potent$Species)
+  
+intersect(low_rec_pot_BR$Scientific_Name, low_potent$Species) 
+
+## How many 'extinct' species are high recovery likelihood...
+RTC_ex <- filter(rr2, Scientific_Name %in% dist$Species)
+qplot(x = as.factor(as.numeric(RTC_ex$RPN_num))) +
+  labs(x = "RPN") +
+  ggthemes::theme_hc()
+RTC_high_rec <- filter(RTC_ex, RPN_num == 2 | RPN_num == 3)
 ```
