@@ -1,0 +1,377 @@
+---
+output: 
+  rmarkdown::html_document:
+    css: custom.css
+    toc: true
+    toc_depth: 3
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r test_setup, echo = FALSE, message=FALSE}
+options(knitr.table.format = "html")
+
+    # df_print: paged
+# <script async defer src="https://hypothes.is/embed.js"></script>
+library(dplyr)
+library(ecosscraper)
+library(fuzzyjoin)
+library(ggplot2)
+library(kableExtra)
+library(knitr)
+library(leaflet)
+library(parallel)
+library(rio)
+library(rmapshaper)
+library(stringr)
+library(tokenizers)
+library(us.geonames)
+
+# read in some data
+cnt_occ <- readRDS("data/ESA_county_occurrences.rds")
+fiveyr_table <- readRDS("data/fiveyr_table_2016-12-17.rds")
+
+# TECP_table <- get_TECP_table()
+tne <- TECP_table %>% filter_listed() %>% filter(U_S__or_ForeignListed != "Foreign")
+
+get_text <- function(file) {
+    text <- readLines(con = file) %>%
+      paste(collapse = " ") %>%
+      str_replace_all("[ ]{2,}", " ")
+    return(text)
+}
+```
+
+# Extinction {#extinct}
+
+Extinction is final: absent leaps in genomic engineering, once a species is
+gone it is gone for good. The extinction crisis of the modern era was a key
+motvation for the ESA (CITES): the goals of the law include preventing 
+extinction and recovering species so they are no longer threatened with
+extinction. One of the ways the success of the ESA is measured is by comparing
+the number of listed species to the number that are extinct. As of this writing,
+ten species have been removed from the list of threatened and endangered
+species, and the list includes 1,652 species. Those numbers suggest 
+`r 100 - (100 * round(10 / 1652, 3))`% of species have been saved by the ESA,
+which by any means is a superb accomplishment.
+
+There are a few problems with using the number of species "delisted due to 
+extinction" as the metric of success. First, it ignores the key goal of species
+recovery and uses the lower bar of mere existence as success. But would anyone
+really argue that plants and animals known only to exist in captivity count as
+successes?
+
+Second, we know that the ten delisted species are simply the ones formally
+accepted as extinct. But proving extinction is tough; we have too many examples
+where a species hadn't been seen for many, many years--multiple decades and even
+over a century--only to be rediscovered (CITES). For such reasons, declarations 
+of extinction are a rare occurrence. At the same time, we often have a  darn 
+good idea that well-documented species are really-and-truly extinct. We hold off
+on the declarations of extinction and the removal of protections because of the
+small but real chance that one or a few individuals still exist. 
+
+My goal here is to find the species that experts - biologists with the U.S. Fish 
+and Wildlife Service (FWS) and National Marine Fisheries Service (NMFS; 
+collectively, the Services) - have good reason to believe are or may be extinct.
+_Declaring_ extinction may not be warranted for many or most of these, but 
+these professionals have indicated that extinction is likely to some greater or
+lesser degree. Getting a better handle on the number of species thought to be
+extinct rather than relying on the number delisted due to extinction is an 
+essential component to understanding the effectiveness of the ESA.
+
+## Identifying possible/probably extinctions
+
+The first question we address is how many species are extinct. Pinning
+down that number is tricky because extinction is fundamentally hard because 
+proving absence is so difficult (CITES). Rather than a declaration of extinct,
+we set the bar at a level of experts' statements that they think the species
+is or may be extinct. From among the ~1,400 five-year reviews, totalling >30,000 
+pages, we need to find a relatively small number of phrases that indicate 
+extinction. We used a set of seven [regular expression](https://www.rstudio.com/wp-content/uploads/2016/09/RegExCheatsheet.pdf) patterns as a coarse filter:
+
+<div style="font-size:smaller">
+1. `"(possibly|may be|have become) extinct"`
+2. `"(certainly being|probably|is|likely|probably being) extinct"`
+3. `"no (populations|individuals)( are)* known"`
+4. `"no( known| living)* individuals"`
+5. `"extinct in( the)* wild"`
+6. `"last (seen|observed|found) in [0-9oOiI]+"`
+7. `"functionally extinct"`
+</div>
+    
+In these patterns, "|" means "or" for the set of words inside parentheses. For
+example, the first pattern would match "possibly extinct," "may be extinct," or
+"have become extinct." The "*" means the preceding letter or word matches zero
+or more times, whereas "+" means the preceding word/letter(s) must match one or
+more times. We checked all seven patterns against all 1,385 five-year reviews
+we collected from [ECOS](https://ecos.fws.gov) and [NMFS's recovery site](http://www.nmfs.noaa.gov/pr/recovery/plans.htm).
+
+```{r terms_1, echo = FALSE}
+src <- "~/Downloads/five_year_review"
+fils <- list.files(src, full.names = TRUE, recursive = TRUE)
+
+terms <- c(
+  "(possibly|may be|have become) extinct",
+  "(certainly being|probably|is|likely|probably being) extinct",
+  "no (populations|individuals)( are)* known",
+  "no( known| living)* individuals",
+  "extinct in( the)* wild",
+  "last (seen|observed|found) in [0-9oOiI]+",
+  "functionally extinct"
+)
+
+proc_file <- function(f) {
+  cat(paste("\nProcessing:", basename(f), "\n"))
+  text <- get_text(f) %>%
+    tokenize_sentences(lowercase = TRUE, simplify = TRUE)
+  res <- data_frame(file = NA, patt = NA, doc = NA, mats = NA)
+  for(i in 1:length(terms)) {
+    mat <- grep(text, pattern = terms[i], fixed = FALSE, value = TRUE)
+    nhit <- length(mat)
+    if(nhit > 0) {
+      resi <- data_frame(file = rep(f, nhit), 
+                         doc = rep(basename(f), nhit),
+                         patt = rep(i, nhit), 
+                         mats = mat)
+    } else {
+      resi <- data_frame(file = f, patt = i, doc = basename(f), mats = NA)
+    }
+    res <- rbind(res, resi)
+  }
+  return(res)
+}
+
+# t1 <- parallel::mclapply(fils, 
+#                          proc_file, 
+#                          mc.cores = 3, 
+#                          mc.preschedule = FALSE)
+# ext_pat <- bind_rows(t1) %>% filter(!is.na(mats))
+# fname <- paste0("data/extinct_patt_matches-", Sys.Date(), ".rds")
+# saveRDS(ext_pat, fname)
+fname <- paste0("data/extinct_patt_matches-2017-09-12.rds")
+ext_pat <- readRDS(fname)
+```
+
+This search returned `r dim(ext_pat)[1]` matches to the patterns, with pattern
+six ("last seen in...") most common:
+
+<div class="narrow-tab">
+```{r echo = FALSE} 
+table(ext_pat$patt) %>%
+  as_data_frame() %>%
+  rename(pattern = Var1) %>%
+  kable() %>%
+  kable_styling(
+    bootstrap_options = "hover", 
+    full_width = T
+  )
+```
+</div>
+
+A few examples of sentences in which pattern six was found include:
+
+<div class="narrow-tab">
+```{r patt_6, echo = FALSE} 
+t3 <- filter(ext_pat, patt == 6) %>% 
+  select(mats) %>% 
+  data.frame() %>%
+  head(10)
+kable(paste("-", t3$mats))
+```
+</div>
+
+And examples of pattern two (higher likelihood of extinction) matches include:
+
+<div class="narrow-tab">
+```{r patt_2, echo = FALSE} 
+t4 <- filter(ext_pat, patt == 2) %>% 
+  select(mats) %>% 
+  data.frame() %>%
+  head(10)
+kable(paste("-", t4$mats))
+```
+</div>
+
+Perusing the pattern matches, we find (as expected) both true positives (i.e.,
+the meaning of the matched sentence comports with the idea we have in mind) and
+false positives (e.g., local extinctions or species previously believed extinct
+but since re-discovered). We also recognize that the current table doesn't
+identify the (one or more) species in each document. After joining the pattern
+matches with a table that links five-year review documents and species
+(scientific names), we manually checked each of the `r unique(ext_pat$doc) %>% length()` five-year reviews with matches to 
+# filter out the false-positives. 
+
+```{r load_manual, echo = FALSE}
+# fiveyr_table <- readRDS("data/fiveyr_table_2016-12-17.rds")
+# w_spp <- left_join(ext_pat, fiveyr_table, by = "doc")
+# rio::export(w_spp, "data/ext_patt_w_spp.xlsx")
+#
+###### MANUAL FILTER #######
+#
+ext_5yr <- readRDS("data/extinct_manual_check_2017-09-05.rds")
+
+extinct <- filter(ext_5yr, true_positive == "T")
+```
+
+From the manually filtered data we find `r length(unique(extinct$Species))`
+species that are believed extinct to some greater or lesser degree, plus the 
+snail genus _Achatinella_. There were 41 species listed in the snail genus and a 
+number - somewhere between 15 and 30 species, though it is difficult to tell 
+exactly how many - are thought to be extinct.
+
+<div class="cols-2">
+```{r echo=FALSE}
+spp <- sort(unique(extinct$Species[!is.na(extinct$Species)]))
+half <- ceiling(length(spp) / 2)
+first <- spp[1:half]
+secnd <- spp[(half+1):length(spp)]
+kable(first)
+kable(secnd)
+```
+</div>
+
+<div class="main-result">
+Together with the ten species that have been [delisted due to extinction](https://ecos.fws.gov/ecp0/reports/delisting-report), **we estimate 70-85 (`r 100*round(70/dim(tne)[1], 2)` -  `r 100*round(85/dim(tne)[1], 2)`%) current or formerly ESA-listed species are believed, to some greater or lesser extent, to be extinct.**
+</div>
+
+We address the geography of extinctions below, but note here that most of these
+species are from Hawaii and many of those are plants (Box 1).
+
+<div class="aside-box">
+### Box 1. Complementary data from PEP
+
+The [Plant Extinction Prevention (PEP) Program](http://www.pepphi.org/) works
+exhaustively to monitor and conserve Hawaiian plants. They also provide more up-
+to-date data on the status of many imperiled plants than FWS documents, and 
+should probably be considered authoritative for PEP species.
+
+We downloaded the 2017-03-16 list from PEP's website then used Adobe's online
+extraction service to render the tables as a spreadsheet for processing. To
+begin, we have a high-level overview of how PEP classifies the covered species:
+
+<div class="narrow-tab">
+```{r echo=FALSE}
+PEP <- readRDS("data/HI_PEP_2017-03-16.rds")
+extrp_wild <- filter(PEP, island_designation == "PEP-EXTIRPATED" |
+                       island_designation == "PEP-EXTIRPATED?")
+table(PEP$island_designation) %>%
+  as_data_frame() %>%
+  rename(PEP_class = Var1) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "hover")
+```
+</div>
+
+Appropriately, PEP uses "?" to denote species for which extirpation and 
+extinction are unknown. The refinement of extinct in the wild vs. extinct from
+the planet is also useful to consider. Last, in addition to the extinctions, the 
+PEP data highlight the problem of extirpations: `r length(unique(extrp_wild$species))` 
+PEP species have been (or probably have been) extirpated from one or more 
+of the islands. First, the number of extirpations by island:
+
+<div class="narrow-tab">
+```{r echo=FALSE}
+spXis_tab <- table(extrp_wild$species, extrp_wild$distribution)
+colnames(spXis_tab) <- str_replace_all(colnames(spXis_tab), "`", "")
+colSums(spXis_tab) %>% 
+  sort(decreasing = TRUE) %>% 
+  head(10) %>% 
+  as_data_frame() %>%
+  rename(extirpations = value) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "hover")
+```
+</div>
+
+And second, by most species:
+
+<div class="narrow-tab">
+```{r echo = FALSE}
+rowSums(spXis_tab) %>%
+  sort(decreasing = TRUE) %>% 
+  head(10) %>%
+  as_data_frame() %>%
+  rename(extirpations = value) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "hover")
+```
+</div>
+
+```{r echo=FALSE}
+hi_cnt <- filter(cnt_occ, STATE == "Hawaii")
+pep_miss <- setdiff(unique(hi_cnt$SCI), PEP$species)
+```
+
+The PEP data adds depth to our understanding of extinctions and extirpations
+among Hawaiian plants, but PEP doesn't cover all ESA-listed plants.  By 
+combining PEP table with county occurrence data, we find `r length(pep_miss)` 
+species are not covered by PEP; more are missing than are covered by PEP. For
+these species in particular it is important for FWS to track species status. 
+One way that is done is with ESA-mandated five-year reviews of species status.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+pep_miss_5y <- filter(fiveyr_table, fiveyr_table$Species %in% pep_miss)
+pep_miss_5y$age <- as.numeric(Sys.Date() - as.Date(pep_miss_5y$Date))
+date_tab <- as.Date(pep_miss_5y$Date) %>%
+  lubridate::year() %>%
+  table() %>%
+  as_data_frame() %>%
+  rename(year = '.')
+p <- ggplot(date_tab, aes(x = year, y = n)) +
+  geom_histogram(stat = "identity") +
+  labs(x = "", y = "count") +
+  ggthemes::theme_hc()
+plotly::ggplotly(p)
+```
+
+There are `r length(pep_miss_5y$age)` non-PEP species with 5-year 
+reviews available, and of those reviews, `r sum(pep_miss_5y$age > (365*5))` are 
+out-of-date (i.e., more than five years old).
+</div>
+
+## Geography of extinctions
+
+<div class="narrow-tab">
+```{r state_level, echo = FALSE}
+w_co <- left_join(extinct, cnt_occ, by = c("Species" = "SCI"))
+spp_w_st <- distinct(w_co, Species, STATE)
+
+dist <- filter(ext_5yr, true_positive == "T") %>% 
+  distinct(Species, .keep_all = TRUE) %>%
+  filter(!is.na(Date))
+
+ext_geo <- left_join(dist, cnt_occ, by = c("Species" = "SCI"))
+ext_geo_state <- distinct(ext_geo, Species, STATE, .keep_all = TRUE)
+table(ext_geo_state$STATE) %>%
+  sort(decreasing = TRUE) %>%
+  as_data_frame() %>%
+  rename(state = Var1) %>%
+  head(10) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "hover")
+```
+</div>
+
+----
+
+<div class="narrow-tab">
+```{r county_level, echo = FALSE}
+ext_geo$co_st <- paste0(ext_geo$NAME, ", ", ext_geo$STATE)
+ext_geo_st_co <- distinct(ext_geo, Species, co_st, .keep_all = TRUE)
+ext_state_cnt <- table(ext_geo_state$STATE) %>% 
+  sort(decreasing = TRUE) %>%
+  as_data_frame()
+names(ext_state_cnt) <- c("state", "n_extinct")
+table(ext_geo_st_co$co_st) %>% 
+  sort(decreasing = TRUE) %>% 
+  as_data_frame() %>%
+  rename(state_county = Var1) %>%
+  head(15) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "hover")
+```
+</div>
+
+## Common threats and habitats
+

@@ -1,0 +1,25 @@
+# Introduction {#intro}
+
+There is a significant need for a wholesale examination of the status of
+species listed as threatened or endangered under the U.S. Endangered Species
+Act (ESA). Without accurate status information - which can take many forms and 
+describe many characteristics - it is impossible for ESA practitioners
+
+## Goal
+
+The goal of this project is to obtain as accurate a picture of the status of
+ESA-listed species as possible. This information is essential for measuring and
+monitoring the effectiveness of the nation's premier wildlife law. With such
+monitoring, we can better identify what works, what can change, and 
+
+## Approach
+
+Most of the data for this work comes from ESA-mandated five-year reviews, which 
+include nearly 1,400 documents and total >30,000 pages. I use textual analysis
+--computational treatment of the reviews and other documents--to extract 
+information from prose. I also (try to) explain how I get to the answers that are
+shown. For example, I could simply write, "I used regular expressions to find
+candidate sentences," but few people except for programmers would know what I 
+mean. So to improve transparency, I give examples of the patterns and examples 
+of text the patterns might match. While this approach may get a little tedious 
+for some readers, I hope it "demystifies" the process.
