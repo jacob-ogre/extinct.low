@@ -12,8 +12,6 @@ editor_options:
 ```{r test_setup, echo = FALSE, message=FALSE}
 options(knitr.table.format = "html")
 
-    # df_print: paged
-# <script async defer src="https://hypothes.is/embed.js"></script>
 library(dplyr)
 library(ecosscraper)
 library(fuzzyjoin)
@@ -22,6 +20,7 @@ library(kableExtra)
 library(knitr)
 library(leaflet)
 library(parallel)
+library(rredlist)
 library(rio)
 library(rmapshaper)
 library(stringr)
@@ -43,69 +42,63 @@ get_text <- function(file) {
 }
 ```
 
-# Extinction {#extinct}
+# Extinction and the ESA {#extinct}
 
-Extinction is final: absent leaps in genomic engineering, once a species is
-gone it is gone for good. The extinction crisis of the modern era was a key
-motvation for the ESA (CITES): the goals of the law include preventing 
-extinction and recovering species so they are no longer threatened with
-extinction. One of the ways the success of the ESA is measured is by comparing
-the number of listed species to the number that are extinct. As of this writing,
-ten species have been removed from the list of threatened and endangered
-species, and the list includes 1,652 species. Those numbers suggest 
-`r 100 - (100 * round(10 / 1652, 3))`% of species have been saved by the ESA,
-which by any means is a superb accomplishment.
+<div class="abstract">
+_Abstract_
 
-There are a few problems with using the number of species "delisted due to 
+The success of the Endangered Species Act is often measured by comparing the
+number of species declared extinct to the number of listed species, which 
+indicates success on the order of 99%. Here we check that measure against the 
+discussions of extinction by the Fish and Wildlife Service and the National 
+Marine Fisheries Service by computationally mining five-year status reviews. We
+find that 80 (~5%) ESA-listed species are known to be or are likely to be 
+extinct. The extinctions are concentrated in Hawaii and a swath that extends
+from Mississippi to Virginia. 
+</div>
+
+The extinction crisis of the modern era was a key motvation for the ESA: the 
+goals of the law include preventing extinction and recovering species so they 
+are no longer threatened with extinction. One of the ways ESA success is 
+measured is by comparing the number of listed species to the number that are 
+extinct. As of this writing, ten species have been removed from the list of 
+threatened and endangered species, and the list includes 1,652 species. Those 
+numbers suggest `r 100 - (100 * round(10 / 1652, 3))`% of species have been 
+saved by the ESA, which is a great accomplishment.
+
+But there are a few problems with using the number of species "delisted due to 
 extinction" as the metric of success. First, it ignores the key goal of species
-recovery and uses the lower bar of mere existence as success. But would anyone
-really argue that plants and animals known only to exist in captivity count as
-successes?
+recovery and uses the lower bar of mere existence as success. But we normally
+don't want to argue that plants and animals known only to exist in captivity 
+count as successes. Success is wildlife out in their homes on the landscape.
 
 Second, we know that the ten delisted species are simply the ones formally
 accepted as extinct. But proving extinction is tough; we have too many examples
 where a species hadn't been seen for many, many years--multiple decades and even
-over a century--only to be rediscovered (CITES). For such reasons, declarations 
+over a century--only to be rediscovered. For such reasons, declarations 
 of extinction are a rare occurrence. At the same time, we often have a  darn 
 good idea that well-documented species are really-and-truly extinct. We hold off
 on the declarations of extinction and the removal of protections because of the
 small but real chance that one or a few individuals still exist. 
 
-My goal here is to find the species that experts - biologists with the U.S. Fish 
+Here we identify the species that experts - biologists with the U.S. Fish 
 and Wildlife Service (FWS) and National Marine Fisheries Service (NMFS; 
 collectively, the Services) - have good reason to believe are or may be extinct.
 _Declaring_ extinction may not be warranted for many or most of these, but 
 these professionals have indicated that extinction is likely to some greater or
 lesser degree. Getting a better handle on the number of species thought to be
 extinct rather than relying on the number delisted due to extinction is an 
-essential component to understanding the effectiveness of the ESA.
+important first step in thoroughly understanding the effectiveness of the ESA.
 
 ## Identifying possible/probably extinctions
 
 The first question we address is how many species are extinct. Pinning
 down that number is tricky because extinction is fundamentally hard because 
-proving absence is so difficult (CITES). Rather than a declaration of extinct,
+proving absence is so difficult. Rather than a declaration of extinct,
 we set the bar at a level of experts' statements that they think the species
-is or may be extinct. From among the ~1,400 five-year reviews, totalling >30,000 
-pages, we need to find a relatively small number of phrases that indicate 
-extinction. We used a set of seven [regular expression](https://www.rstudio.com/wp-content/uploads/2016/09/RegExCheatsheet.pdf) patterns as a coarse filter:
-
-<div style="font-size:smaller">
-1. `"(possibly|may be|have become) extinct"`
-2. `"(certainly being|probably|is|likely|probably being) extinct"`
-3. `"no (populations|individuals)( are)* known"`
-4. `"no( known| living)* individuals"`
-5. `"extinct in( the)* wild"`
-6. `"last (seen|observed|found) in [0-9oOiI]+"`
-7. `"functionally extinct"`
-</div>
-    
-In these patterns, "|" means "or" for the set of words inside parentheses. For
-example, the first pattern would match "possibly extinct," "may be extinct," or
-"have become extinct." The "*" means the preceding letter or word matches zero
-or more times, whereas "+" means the preceding word/letter(s) must match one or
-more times. We checked all seven patterns against all 1,385 five-year reviews
-we collected from [ECOS](https://ecos.fws.gov) and [NMFS's recovery site](http://www.nmfs.noaa.gov/pr/recovery/plans.htm).
+is or may be extinct. We mined the text of all 
+[~1,400 five-year status reviews, totalling >30,000  pages](https://www.fws.gov/southeast/endangered-species-act/five-year-reviews/), 
+we need to find a relatively [small number of phrases](#phrase_patterns) that indicate extinction. 
 
 ```{r terms_1, echo = FALSE}
 src <- "~/Downloads/five_year_review"
@@ -153,35 +146,9 @@ fname <- paste0("data/extinct_patt_matches-2017-09-12.rds")
 ext_pat <- readRDS(fname)
 ```
 
-This search returned `r dim(ext_pat)[1]` matches to the patterns, with pattern
-six ("last seen in...") most common:
-
-<div class="narrow-tab">
-```{r echo = FALSE} 
-table(ext_pat$patt) %>%
-  as_data_frame() %>%
-  rename(pattern = Var1) %>%
-  kable() %>%
-  kable_styling(
-    bootstrap_options = "hover", 
-    full_width = T
-  )
-```
-</div>
-
-A few examples of sentences in which pattern six was found include:
-
-<div class="narrow-tab">
-```{r patt_6, echo = FALSE} 
-t3 <- filter(ext_pat, patt == 6) %>% 
-  select(mats) %>% 
-  data.frame() %>%
-  head(10)
-kable(paste("-", t3$mats))
-```
-</div>
-
-And examples of pattern two (higher likelihood of extinction) matches include:
+This search returned `r dim(ext_pat)[1]` matches to 
+[the set of candidate phrase patterns](#phrase_patterns), including patterns
+that indicate a higher likelihood of extinction such as:
 
 <div class="narrow-tab">
 ```{r patt_2, echo = FALSE} 
@@ -192,15 +159,6 @@ t4 <- filter(ext_pat, patt == 2) %>%
 kable(paste("-", t4$mats))
 ```
 </div>
-
-Perusing the pattern matches, we find (as expected) both true positives (i.e.,
-the meaning of the matched sentence comports with the idea we have in mind) and
-false positives (e.g., local extinctions or species previously believed extinct
-but since re-discovered). We also recognize that the current table doesn't
-identify the (one or more) species in each document. After joining the pattern
-matches with a table that links five-year review documents and species
-(scientific names), we manually checked each of the `r unique(ext_pat$doc) %>% length()` five-year reviews with matches to 
-# filter out the false-positives. 
 
 ```{r load_manual, echo = FALSE}
 # fiveyr_table <- readRDS("data/fiveyr_table_2016-12-17.rds")
@@ -214,11 +172,16 @@ ext_5yr <- readRDS("data/extinct_manual_check_2017-09-05.rds")
 extinct <- filter(ext_5yr, true_positive == "T")
 ```
 
+Perusing the pattern matches, we find (as expected) both true positives (i.e.,
+the meaning of the matched sentence comports with the idea we have in mind) and
+false positives (e.g., local extinctions or species previously believed extinct
+but since re-discovered). To ensure we are working with the right numbers, we 
+manually checked each 5-year review with an extinction phrase match to remove
+the false-positives.
+
 From the manually filtered data we find `r length(unique(extinct$Species))`
 species that are believed extinct to some greater or lesser degree, plus the 
-snail genus _Achatinella_. There were 41 species listed in the snail genus and a 
-number - somewhere between 15 and 30 species, though it is difficult to tell 
-exactly how many - are thought to be extinct.
+snail genus _Achatinella_ (see below). 
 
 <div class="cols-2">
 ```{r echo=FALSE}
@@ -232,14 +195,140 @@ kable(secnd)
 </div>
 
 <div class="main-result">
-Together with the ten species that have been [delisted due to extinction](https://ecos.fws.gov/ecp0/reports/delisting-report), **we estimate 70-85 (`r 100*round(70/dim(tne)[1], 2)` -  `r 100*round(85/dim(tne)[1], 2)`%) current or formerly ESA-listed species are believed, to some greater or lesser extent, to be extinct.**
+Together with the ten species that have been [delisted due to extinction](https://ecos.fws.gov/ecp0/reports/delisting-report), **85 (`r 100*round(85/(dim(tne)[1] + 41), 2)`%) current or formerly ESA-listed species are thought, to some greater or lesser extent, to be extinct.**
 </div>
 
-We address the geography of extinctions below, but note here that most of these
-species are from Hawaii and many of those are plants (Box 1).
+Most of the extinct species are from Hawaii, with many that are plants
+[Box 1](#box_1) or snails [Box 2](#box_2).
 
-<div class="aside-box">
-### Box 1. Complementary data from PEP
+## Geography of extinctions
+
+The next question is where the extinctions have occurred. Hawaii, of course, 
+tops the list, but where are the other species?
+
+```{r state_level, echo = FALSE, fig.cap="States with the most (likely) extinctions."}
+w_co <- left_join(extinct, cnt_occ, by = c("Species" = "SCI"))
+spp_w_st <- distinct(w_co, Species, STATE)
+dist <- filter(ext_5yr, true_positive == "T") %>% 
+  distinct(Species, .keep_all = TRUE) %>%
+  filter(!is.na(Date))
+
+ext_geo <- left_join(dist, cnt_occ, by = c("Species" = "SCI"))
+ext_geo_state <- distinct(ext_geo, Species, STATE, .keep_all = TRUE)
+ext_state_cnt <- table(ext_geo_state$STATE) %>% 
+  sort(decreasing = TRUE) %>%
+  as_data_frame()
+
+states <- readRDS(file = "data/state-simple.geo.json")
+names(ext_state_cnt) <- c("NAME10", "n_extinct")
+state_ext_geo <- sp::merge(states, ext_state_cnt)
+
+n_ex_bins <- c(0, 1, 2, 3, 5, 24)
+n_ex_pal <- colorBin(
+  "YlOrRd", 
+  domain = state_ext_geo$n_extinct, 
+  bins = n_ex_bins
+)
+
+labels <- sprintf(
+  "<strong>%s</strong><br/>%g 'extinct' species",
+  state_ext_geo$NAME10, state_ext_geo$n_extinct
+) %>% lapply(htmltools::HTML)
+
+leaflet(state_ext_geo) %>%
+  setView(-110, 45, 3) %>%
+  # addProviderTiles("Stamen.TonerLite") %>%
+  addPolygons(
+    fillColor = ~n_ex_pal(n_extinct),
+    weight = 1,
+    opacity = 1,
+    color = "white",
+    fillOpacity = 0.7,
+    highlight = highlightOptions(
+      weight = 2,
+      color = "#666",
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE),
+    label = labels,
+    labelOptions = labelOptions(
+      style = list("font-weight" = "normal", padding = "3px 8px"),
+      textsize = "15px",
+      direction = "auto")
+  ) %>% 
+  addLegend(
+    pal = n_ex_pal,
+    values = ~n_extinct,
+    opacity = 0.7, 
+    title = NULL,
+    position = "bottomright"
+  )
+```
+
+Again, Hawaii clearly shows up with the most species, but the swath from 
+Mississippi to Virginia stands out too. Most of these species are mussels and
+fish, so the issue could be related to the problems apparent in this (albeit old) [Clean Water Act 303(d) impaired waters](https://www.epa.gov/tmdl) map:
+
+![](img/303d_waters_1998.png)
+
+Impairment as measured by EPA standards is not the complete answer, and begs 
+the question of why extinctions are not higher in other states with realtively 
+high impairment.
+
+<div class="narrow-tab">
+```{r echo=FALSE}
+names(ext_state_cnt) <- c("state", "n_extinct")
+table(ext_geo_state$STATE) %>%
+  sort(decreasing = TRUE) %>%
+  as_data_frame() %>%
+  rename(state = Var1) %>%
+  head() %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "hover")
+```
+</div>
+
+----
+
+```{r county_level, echo = FALSE}
+# <div class="narrow-tab">
+ext_geo$co_st <- paste0(ext_geo$NAME, ", ", ext_geo$STATE)
+ext_geo_st_co <- distinct(ext_geo, Species, co_st, .keep_all = TRUE)
+# table(ext_geo_st_co$co_st) %>% 
+#   sort(decreasing = TRUE) %>% 
+#   as_data_frame() %>%
+#   rename(state_county = Var1) %>%
+#   head() %>%
+#   kable() %>%
+#   kable_styling(bootstrap_options = "hover")
+# </div>
+```
+
+## Common threats and habitats
+
+```{r echo=FALSE}
+ext_iucn_habitat <- lapply(
+  unique(ext_geo$Species), 
+  rl_habitats, 
+  key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
+)
+for(i in 1:length(ext_iucn_habitat)) {
+  ext_iucn_habitat[[i]]$result$species <- ext_iucn_habitat[[i]]$name
+}
+ext_iucn_habitat_dfs <- lapply(ext_iucn_habitat, `[[`, 2)
+ext_iucn_habitat_df <- bind_rows(ext_iucn_habitat_dfs)
+table(ext_iucn_habitat_df$habitat, useNA = "always") %>% 
+  sort(decreasing = TRUE) %>%
+  as_data_frame() %>%
+  rename(habitat = Var1) %>%
+  head() %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "hover")
+
+```
+
+<div id="box_1", class="aside-box">
+## Box 1. Complementary data from PEP
 
 The [Plant Extinction Prevention (PEP) Program](http://www.pepphi.org/) works
 exhaustively to monitor and conserve Hawaiian plants. They also provide more up-
@@ -330,48 +419,59 @@ reviews available, and of those reviews, `r sum(pep_miss_5y$age > (365*5))` are
 out-of-date (i.e., more than five years old).
 </div>
 
-## Geography of extinctions
+<div id="box_2", class="aside-box">
+## Box 2. _Achatinella_ snails
 
-<div class="narrow-tab">
-```{r state_level, echo = FALSE}
-w_co <- left_join(extinct, cnt_occ, by = c("Species" = "SCI"))
-spp_w_st <- distinct(w_co, Species, STATE)
+```{r echo=FALSE}
+# acha <- readxl::read_excel("data-raw/Achatinella.xlsx")
+# saveRDS(acha, file = "data/Achatinella.rds")
+acha <- readRDS("data/Achatinella.rds")
+acha$species <- paste("Achatinella", acha$species)
+```
 
-dist <- filter(ext_5yr, true_positive == "T") %>% 
-  distinct(Species, .keep_all = TRUE) %>%
-  filter(!is.na(Date))
+Some `r length(unique(acha$species))` species of _Achatinella_ snails 
+have been described, all native to the tropical forests of Oahu. Unfortunately, 
+they have suffered more likely extinctions than any other genus of ESA-listed
+species. Here we summarize the  status as given in the last five-year review 
+for the genus (2011) plus status information gleaned from other sources (e.g., 
+IUCN and NatureServe).
 
-ext_geo <- left_join(dist, cnt_occ, by = c("Species" = "SCI"))
-ext_geo_state <- distinct(ext_geo, Species, STATE, .keep_all = TRUE)
-table(ext_geo_state$STATE) %>%
-  sort(decreasing = TRUE) %>%
-  as_data_frame() %>%
-  rename(state = Var1) %>%
-  head(10) %>%
+Among the `r length(unique(acha$species))` _Achatinella_, current publicly 
+available information indicates
+`r length(acha$believed_extinct[acha$believed_extinct == "T"])` are extinct:
+
+<div class="cols-2">
+```{r echo=F}
+ext_ach <- filter(acha, believed_extinct == "T")
+as_data_frame(ext_ach$species) %>%
   kable() %>%
   kable_styling(bootstrap_options = "hover")
 ```
 </div>
 
-----
 
-<div class="narrow-tab">
-```{r county_level, echo = FALSE}
-ext_geo$co_st <- paste0(ext_geo$NAME, ", ", ext_geo$STATE)
-ext_geo_st_co <- distinct(ext_geo, Species, co_st, .keep_all = TRUE)
-ext_state_cnt <- table(ext_geo_state$STATE) %>% 
-  sort(decreasing = TRUE) %>%
-  as_data_frame()
-names(ext_state_cnt) <- c("state", "n_extinct")
-table(ext_geo_st_co$co_st) %>% 
-  sort(decreasing = TRUE) %>% 
-  as_data_frame() %>%
-  rename(state_county = Var1) %>%
-  head(15) %>%
-  kable() %>%
-  kable_styling(bootstrap_options = "hover")
-```
+
 </div>
 
-## Common threats and habitats
+## Methods
 
+### Patterns {#phrase_patterns}
+
+We used a set of seven [regular expression](https://www.rstudio.com/wp-content/uploads/2016/09/RegExCheatsheet.pdf) patterns as a coarse filter:
+
+<div style="font-size:smaller">
+1. `"(possibly|may be|have become) extinct"`
+2. `"(certainly being|probably|is|likely|probably being) extinct"`
+3. `"no (populations|individuals)( are)* known"`
+4. `"no( known| living)* individuals"`
+5. `"extinct in( the)* wild"`
+6. `"last (seen|observed|found) in [0-9oOiI]+"`
+7. `"functionally extinct"`
+</div>
+    
+In these patterns, "|" means "or" for the set of words inside parentheses. For
+example, the first pattern would match "possibly extinct," "may be extinct," or
+"have become extinct." The "*" means the preceding letter or word matches zero
+or more times, whereas "+" means the preceding word/letter(s) must match one or
+more times. We checked all seven patterns against all 1,385 five-year reviews
+we collected from [ECOS](https://ecos.fws.gov) and [NMFS's recovery site](http://www.nmfs.noaa.gov/pr/recovery/plans.htm).

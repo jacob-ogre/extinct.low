@@ -23,3 +23,15 @@ candidate sentences," but few people except for programmers would know what I
 mean. So to improve transparency, I give examples of the patterns and examples 
 of text the patterns might match. While this approach may get a little tedious 
 for some readers, I hope it "demystifies" the process.
+
+
+
+
+```{r setup, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+states <- rgdal::readOGR(
+  path.expand("~/Work/Repos/us-maps/geojson/state.geo.json"),
+  "OGRGeoJSON"
+)
+state2 <- ms_simplify(states)
+saveRDS(state2, file = "data/state-simple.geo.json")
+```

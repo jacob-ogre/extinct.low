@@ -147,6 +147,17 @@ td, th {
     padding-bottom: 5px;
 }
 
+.abstract {
+  background-color: #E9EDFF;
+  border-radius: 3px;
+  margin-bottom: 30px;
+  padding: 20px;
+}
+
+.abstract p {
+  margin-bottom: 0;
+}
+
 .narrow-tab {
   font-size: 1.1em;
   padding-left: 5%;
@@ -187,3 +198,6 @@ td, th {
   padding-right: 5%;
 }
 
+.caption {
+  margin-bottom: 0;
+}
