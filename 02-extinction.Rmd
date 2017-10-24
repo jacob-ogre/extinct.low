@@ -11,6 +11,7 @@ editor_options:
 
 ```{r test_setup, echo = FALSE, message=FALSE}
 options(knitr.table.format = "html")
+library(plyr)
 
 library(dplyr)
 library(ecosscraper)
@@ -23,6 +24,7 @@ library(parallel)
 library(rredlist)
 library(rio)
 library(rmapshaper)
+library(RPostgreSQL)
 library(stringr)
 library(tokenizers)
 library(us.geonames)
@@ -32,13 +34,36 @@ cnt_occ <- readRDS("data/ESA_county_occurrences.rds")
 fiveyr_table <- readRDS("data/fiveyr_table_2016-12-17.rds")
 
 # TECP_table <- get_TECP_table()
-tne <- TECP_table %>% filter_listed() %>% filter(U_S__or_ForeignListed != "Foreign")
+# tne <- TECP_table %>% filter_listed() %>% filter(U_S__or_ForeignListed != "Foreign")
+
+con <- dbConnect(
+  dbDriver("PostgreSQL"),
+  dbname = "esc-dev",
+  user = "postgres",
+  password = "SillySilly1!",
+  host = "localhost"
+)
+
+tne <- dbSendQuery(con, "select * from tecp_table") %>%
+  dbFetch() %>%
+  filter_listed() %>%
+  filter_domestic()
 
 get_text <- function(file) {
     text <- readLines(con = file) %>%
       paste(collapse = " ") %>%
       str_replace_all("[ ]{2,}", " ")
     return(text)
+}
+
+simple_tab <- function(v, vname = "var", useNA = "always", n = 10) {
+  table(v, useNA = useNA) %>% 
+    sort(decreasing = TRUE) %>%
+    as_data_frame() %>%
+    plyr::rename(replace = c("v" = vname)) %>% 
+    head(n) %>%
+    kable() %>%
+    kable_styling(bootstrap_options = "hover")
 }
 ```
 
@@ -199,7 +224,11 @@ Together with the ten species that have been [delisted due to extinction](https:
 </div>
 
 Most of the extinct species are from Hawaii, with many that are plants
-[Box 1](#box_1) or snails [Box 2](#box_2).
+[Box 1](#box_1) or snails [Box 2](#box_2). Note that we collapse all 31 extinct
+species in the genus _Achatinella_ to "_Achatinella_ spp." in subsequent
+analyses because they were all from the same place and faced the same threats.
+To count them individually when trying to understand broad patterns related to
+extinction would bias our inferences.
 
 ## Geography of extinctions
 
@@ -271,9 +300,8 @@ fish, so the issue could be related to the problems apparent in this (albeit old
 
 ![](img/303d_waters_1998.png)
 
-Impairment as measured by EPA standards is not the complete answer, and begs 
-the question of why extinctions are not higher in other states with realtively 
-high impairment.
+Impairment as measured by EPA standards is not the complete answer why 
+are extinctions not higher in other states with realtively high impairment.
 
 <div class="narrow-tab">
 ```{r echo=FALSE}
@@ -281,7 +309,7 @@ names(ext_state_cnt) <- c("state", "n_extinct")
 table(ext_geo_state$STATE) %>%
   sort(decreasing = TRUE) %>%
   as_data_frame() %>%
-  rename(state = Var1) %>%
+  rename("state" = "Var1") %>%
   head() %>%
   kable() %>%
   kable_styling(bootstrap_options = "hover")
@@ -290,42 +318,129 @@ table(ext_geo_state$STATE) %>%
 
 ----
 
-```{r county_level, echo = FALSE}
-# <div class="narrow-tab">
+In addition to the state-level patterns of extinction, we can use counties of
+occurrence to evaluate patterns of the geography of extinction. The ten counties
+with the most extinct species include:
+
+<div class="narrow-tab">
+```{r county_level, echo = FALSE, fig.cap="Ten counties with the greatest number of likely extinct, ESA-listed species. Excludes 'NA' entries for species lacking county data."}
 ext_geo$co_st <- paste0(ext_geo$NAME, ", ", ext_geo$STATE)
 ext_geo_st_co <- distinct(ext_geo, Species, co_st, .keep_all = TRUE)
-# table(ext_geo_st_co$co_st) %>% 
-#   sort(decreasing = TRUE) %>% 
-#   as_data_frame() %>%
-#   rename(state_county = Var1) %>%
-#   head() %>%
-#   kable() %>%
-#   kable_styling(bootstrap_options = "hover")
-# </div>
+table(ext_geo_st_co$co_st) %>%
+  sort(decreasing = TRUE) %>%
+  as_data_frame() %>%
+  filter(Var1 != "NA, NA") %>%
+  rename(`State, County` = Var1) %>%
+  head(10) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "hover")
 ```
+</div>
+
+As expected, Hawaiian counties top the list, followed by Guam, then southern
+Appalachian counties in Tennessee, Virginia, and Kentucky. Thus, although 
+Alabama and Mississippi have more extinct, listed species than these states,
+those species are (were) more concentrated in Tennessee, Virginia, and Kentucky.
 
 ## Common threats and habitats
 
+Given the list of likely extinct species, we would like to know what they have
+in common. Any commonalities might help inform prioritization efforts that can
+stem future extinctions. We build off of the data available through the [IUCN's Red List database](http://apiv3.iucnredlist.org/).
+
+### Habitats
+
 ```{r echo=FALSE}
-ext_iucn_habitat <- lapply(
-  unique(ext_geo$Species), 
-  rl_habitats, 
-  key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
-)
-for(i in 1:length(ext_iucn_habitat)) {
-  ext_iucn_habitat[[i]]$result$species <- ext_iucn_habitat[[i]]$name
-}
-ext_iucn_habitat_dfs <- lapply(ext_iucn_habitat, `[[`, 2)
-ext_iucn_habitat_df <- bind_rows(ext_iucn_habitat_dfs)
+# ext_iucn_habitat <- lapply(
+#   unique(ext_geo$Species), 
+#   rl_habitats, 
+#   key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
+# )
+# for(i in 1:length(ext_iucn_habitat)) {
+#   ext_iucn_habitat[[i]]$result$species <- ext_iucn_habitat[[i]]$name
+# }
+# ext_iucn_habitat_dfs <- lapply(ext_iucn_habitat, `[[`, 2)
+# ext_iucn_habitat_df <- bind_rows(ext_iucn_habitat_dfs)
+# saveRDS(ext_iucn_habitat_df, file = "data/extinct_iucn_habitat.rds")
+ext_iucn_habitat_df <- readRDS("data/extinct_iucn_habitat.rds")
 table(ext_iucn_habitat_df$habitat, useNA = "always") %>% 
   sort(decreasing = TRUE) %>%
   as_data_frame() %>%
   rename(habitat = Var1) %>%
-  head() %>%
+  head(10) %>%
   kable() %>%
   kable_styling(bootstrap_options = "hover")
-
 ```
+
+The most common defined habitats for the extinct species parallels those species'
+geography: subtropical / tropical forests of Hawaii where species such as the
+_Achatinella_ snails, various plants, and birds lived. Inland wetlands, in 
+particular the rivers, streams, and creeks inhabited by likely extinct mussels
+and fishes, are the second major group. Last, notice the most common habitat 
+type is actually "NA." This points to a limitation of the IUCN's database - 
+incomplete information - that we will propose to help address in another venue.
+
+### Threats
+
+```{r echo=FALSE}
+# ext_iucn_threats <- lapply(
+#   unique(ext_geo$Species), 
+#   rl_threats, 
+#   key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
+# )
+# for(i in 1:length(ext_iucn_threats)) {
+#   ext_iucn_threats[[i]]$result$species <- ext_iucn_threats[[i]]$name
+# }
+# ext_iucn_threats_dfs <- lapply(ext_iucn_threats, `[[`, 2)
+# ext_iucn_threats_df <- bind_rows(ext_iucn_threats_dfs)
+# table(ext_iucn_threats_df$title) %>% sort(decreasing = TRUE)
+# no_iucn_threat <- filter(ext_iucn_threats_df, is.na(title))
+# no_thr_syn <- lapply(
+#   unique(no_iucn_threat$species),
+#   rl_synonyms, 
+#   key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
+# )
+# no_thr_syn_res <- lapply(no_thr_syn, `[[`, 3) %>% bind_rows()
+# 
+# ext_iucn_thr2 <- lapply(
+#   unique(no_thr_syn_res$accepted_name), 
+#   rl_threats, 
+#   key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
+# )
+# for(i in 1:length(ext_iucn_thr2)) {
+#   ext_iucn_thr2[[i]]$result$species <- ext_iucn_thr2[[i]]$name
+# }
+# ext_iucn_thr2_dfs <- lapply(ext_iucn_thr2, `[[`, 2)
+# ext_iucn_thr2_df <- bind_rows(ext_iucn_thr2_dfs)
+# 
+# extinct_spp_iucn_threats <- ext_iucn_threats_df %>%
+#   select(8, 1:7) %>%
+#   rbind(ext_iucn_thr2_df) %>% 
+#   filter(!(species %in% no_thr_syn_res$synonym))
+# saveRDS(extinct_spp_iucn_threats, file = "data/extinct_iucn_threats.rds")
+extinct_spp_iucn_threats <- readRDS("data/extinct_iucn_threats.rds")
+
+simple_tab(extinct_spp_iucn_threats$title, vname = "title")
+```
+
+
+
+```{r echo=FALSE}
+simple_tab(extinct_spp_iucn_threats$code, vname = "code")
+extinct_spp_iucn_threats$simple_code <- extinct_spp_iucn_threats$code %>%
+  str_split(pattern = "\\.") %>%
+  lapply(FUN = `[[`, 1) %>%
+  unlist()
+cur_dat <- extinct_spp_iucn_threats$simple_code %>%
+  table() %>%
+  as_data_frame() %>%
+  plyr::rename(replace = c("." = "threat_code")) %>%
+  arrange(-n)
+  
+# qplot(sort(table(extinct_spp_iucn_threats$simple_code), de
+```
+
+
 
 <div id="box_1", class="aside-box">
 ## Box 1. Complementary data from PEP
