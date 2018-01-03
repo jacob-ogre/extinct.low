@@ -25,9 +25,9 @@ of text the patterns might match. While this approach may get a little tedious
 for some readers, I hope it "demystifies" the process.
 
 
-
-
 ```{r setup, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+library(rmapshaper)
+
 states <- rgdal::readOGR(
   path.expand("~/Work/Repos/us-maps/geojson/state.geo.json"),
   "OGRGeoJSON"

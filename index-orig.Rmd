@@ -1,0 +1,683 @@
+---
+title: "Extinct and declining ESA-listed species"
+author: "Defenders of Wildlife"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_document:
+    css: custom.css
+    df_print: paged
+    fig_caption: yes
+    fig_width: 7
+    fig_height: 5
+    highlight: tango
+    toc: true
+    toc_depth: 4
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, echo = FALSE, message=FALSE}
+# <script async defer src="https://hypothes.is/embed.js"></script>
+library(dplyr)
+library(ecosscraper)
+library(fuzzyjoin)
+library(ggplot2)
+library(leaflet)
+library(parallel)
+library(rio)
+library(rmapshaper)
+library(stringr)
+library(tokenizers)
+library(us.geonames)
+
+src <- "~/Downloads/five_year_review"
+fils <- list.files(src, full.names = TRUE, recursive = TRUE)
+
+### Five-year review tables from ECOS 
+# load("/Users/jacobmalcom/Downloads/ECOS_species_tables_2016-12-17.rda")
+# fiveyr_table$doc <- basename(fiveyr_table$Doc_Link) %>% 
+#   str_replace_all(pattern = "pdf$", replacement = "txt")
+# saveRDS(fiveyr_table, file = "data/fiveyr_table_2016-12-17.rds")
+fiveyr_table <- readRDS("data/fiveyr_table_2016-12-17.rds")
+
+### County occurrences
+# cnt_occ <- readr::read_tsv("~/Downloads/EndSp_county_occurrences.tsv")
+# saveRDS(cnt_occ, file = "data/ESA_county_occurrences.rds")
+cnt_occ <- readRDS("data/ESA_county_occurrences.rds")
+
+### Recovery report to Congress
+# rec_rep <- readxl::read_excel(
+#   "~/Downloads/Recovery_Report_FY2013-2014_tabs.xlsx"
+# )
+# rec_rep$date_listed <- as.Date(rec_rep$date_listed)
+# 
+# rec_rep$date_5yr <- ifelse(
+#   rec_rep$date_5yr == "N/A", 
+#   NA, 
+#   as.numeric(rec_rep$date_5yr)
+# ) %>% as.Date(origin = "1899-12-30")
+# 
+# rec_rep$plan_date <- ifelse(
+#   rec_rep$plan_date == "N/A", 
+#   NA, 
+#   as.numeric(rec_rep$plan_date)
+# ) %>% as.Date(origin = "1899-12-30")
+# 
+# rec_rep$fiveyr_rec <- str_replace_all(rec_rep$fiveyr_rec, "\\*$", "") %>%
+#   str_replace_all("species", "Species")
+# rec_rep$species <- str_replace_all(rec_rep$species, "\r\n", " ")
+# rio::export(rec_rep, file = "~/Downloads/ESA_recovery_report_2013-2014.tsv")
+# saveRDS(rec_rep, file = "data/ESA_recovery_report_2013-2014.rds")
+rec_rep <- readRDS("data/ESA_recovery_report_2013-2014.rds")
+
+# PEP <- readxl::read_excel("~/Downloads/HI_TE_plants_pep_list_20170316.xlsx")
+# names(PEP) <- c("species", "distribution", "island_designation")
+# PEP$island_designation <- ifelse(
+#   PEP$island_designation == "PEP-Extinct in wild",
+#   "PEP-Extinct in Wild",
+#   PEP$island_designation
+# )
+# saveRDS(PEP, file = "data/HI_PEP_2017-03-16.rds")
+PEP <- readRDS("data/HI_PEP_2017-03-16.rds")
+
+### Recovery plan BAS from five-year review
+# txt <- paste(readLines("~/Downloads/fiveyr_recplan_BAS.txt"), collapse = " ")
+# parts <- str_split(txt, pattern = "--")[[1]]
+# fnames <- str_match(parts, pattern = "^[ ]*[a-zA-Z0-9-_]*\\.txt") %>%
+#   str_replace(pattern = "^ ", replacement = "")
+# BAS_df <- data_frame(file = fnames, text = parts)
+# BAS_df$doc <- basename(BAS_df$file)
+# BAS_df$yes_checks <- grepl(parts, pattern = "X[-_ ]*Yes")
+# BAS_df$no_checks <- grepl(parts, pattern = "X[-_ ]*No")
+# BAS_df$anti_check <- !grepl(parts, pattern = "X[-_ ]*")
+# BAS_df$ac_yes <- ifelse(
+#   BAS_df$anti_check == TRUE & grepl(BAS_df$text, pattern = "Yes[.]*"),
+#   TRUE,
+#   FALSE
+# )
+# BAS_df$ac_no <- ifelse(
+#   BAS_df$anti_check == TRUE & grepl(BAS_df$text, pattern = "No[.]*"),
+#   TRUE,
+#   FALSE
+# )
+# BAS_df$recplan_BAS <- ifelse(
+#   BAS_df$yes_checks | BAS_df$ac_yes, 
+#   TRUE, 
+#   FALSE
+# )
+# saveRDS(BAS_df, file = "data/recplan_BAS_fiveyr.rds")
+BAS_df <- readRDS("data/recplan_BAS_fiveyr.rds")
+
+### Extinct species from 5-year reviews
+# ext_5yr <- readxl::read_excel("~/Downloads/extinct_patterns_raw.xlsx")
+# saveRDS(ext_5yr, file = "data/extinct_manual_check_2017-09-05.rds")
+ext_5yr <- readRDS("data/extinct_manual_check_2017-09-05.rds")
+```
+
+# Recovery plans: best available science?
+
+```{r recplan_BAS}
+BAS_miss <- setdiff(fiveyr_table$doc, BAS_df$doc)
+```
+
+# Listing status recommendations
+
+```{r echo=FALSE}
+patts <- c(
+  "[xX][-_ ]*( Yes, )*[dD]ownlist",
+  "[xX][-_ ]*( Yes, )*[rR]eclassify from Endangered to Threatened",
+  "[xX][-_ ]*( Yes, )*[uU]plist",
+  "[xX][-_ ]*( Yes, )*[rR]eclassify from Threatened to Endangered",
+  "[xX][-_ ]*( Yes, )*[dD]elist",
+  "[xX][a-z -_]*( No, )*[nN]o [cC]hange",
+  "Recommended [cC]lassification[[:print:]]+: Threatened",
+  "Recommended [cC]lassification[[:print:]]+: Endangered",
+  "Recommended [cC]lassification[[:print:]]+: No change",
+  "[xX][-_ ]*Extinct",
+  "[xX][-_ ]*Recovery",
+  "[xX][-_ ]*Original data"
+)
+
+proc_file <- function(f) {
+  cat(paste("\nProcessing:", basename(f), "\n"))
+  text <- readLines(f) %>% str_replace_all("[ ]{2,}", " ")
+  print(nchar(paste(text, collapse = "")))
+  res <- data_frame(file = NA, patt = NA, doc = NA, mats = NA)
+  for(i in 1:length(patts)) {
+    mat <- str_extract_all(text, pattern = patts[i], simplify = TRUE)
+    mat <- mat[mat != ""]
+    if(length(mat) > 0) print(mat)
+    nhit <- length(mat)
+    if(nhit > 0) {
+      resi <- data_frame(file = rep(f, nhit), 
+                         doc = rep(basename(f), nhit),
+                         patt = rep(i, nhit), 
+                         mats = mat)
+    } else {
+      resi <- data_frame(file = f, patt = i, doc = basename(f), mats = NA)
+    }
+    res <- rbind(res, resi)
+  }
+  return(res)
+}
+
+t1 <- mclapply(fils, proc_file, mc.cores = 3, mc.preschedule = FALSE)
+stat_rec <- bind_rows(t1) %>% 
+  filter(!is.na(file)) %>% 
+  distinct(doc, mats, .keep_all = TRUE)
+
+stat_rec$rec <- ifelse(
+  stat_rec$patt == 1 & is.na(stat_rec$mats),
+  NA,
+  ifelse(
+    stat_rec$patt == 1 | stat_rec$patt == 2,
+    "downlist",
+    ifelse(
+      stat_rec$patt == 3 | stat_rec$patt == 4,
+      "uplist",
+      ifelse(
+        stat_rec$patt == 5,
+        "delist",
+        ifelse(
+          stat_rec$patt == 6 | stat_rec$patt == 9,
+          "no change",
+          ifelse(
+            stat_rec$patt == 7,
+            "Unk change, T",
+            "Unk change, E"
+          )
+        )
+      )
+    )
+  )
+)
+stat_2 <- distinct(stat_rec, doc, rec, .keep_all = TRUE) %>%
+  arrange(-patt, mats)
+stat_2$dups <- duplicated(stat_2$doc)
+stat_3 <- filter(stat_2, dups == FALSE) %>%
+  arrange(doc)
+stat_3$delist_bc <- ifelse(
+  stat_3$patt == 10,
+  "extinct",
+  ifelse(
+    stat_3$patt == 11,
+    "recovery",
+    ifelse(
+      stat_3$patt == 12,
+      "error",
+      NA
+    )
+  )
+)
+stat_rec <- left_join(stat_3, fiveyr_table, by = "doc") %>%
+  select(-dups) %>%
+  distinct(doc, .keep_all = TRUE)
+
+delist <- filter(stat_rec, rec == "delist")
+uplist <- filter(stat_rec, rec == "uplist")
+downlist <- filter(stat_rec, rec == "downlist")
+
+table(stat_rec$rec, useNA = "always")
+table(stat_rec$delist_bc)
+```
+
+## Compare to biennial report
+
+```{r}
+table(rec_rep$fiveyr_rec)
+spp_df <- data_frame(species = unique(cnt_occ$SCI))
+domest <- get_TECP_table() %>% filter_domestic() %>% filter_listed()
+rr2 <- fuzzy_left_join(
+  rec_rep,
+  domest,
+  by = c("species" = "Scientific_Name"),
+  match_fun = function(v1, v2) {
+    stringr::str_detect(string = v1, pattern = v2)
+  }
+)
+
+no_sci <- filter(rr2, is.na(Scientific_Name))
+
+delist_ext <- filter(rec_rep, fiveyr_rec == "Delist due to extinction")
+```
+
+# PEP
+
+The [Plant Extinction Prevention (PEP) Program](http://www.pepphi.org/) in 
+Hawaii tracks the status of imperiled plants more closely than FWS documents,
+and should probably be considered authoritative for species covered by PEP.
+
+```{r}
+as_data_frame(table(PEP$island_designation))
+```
+
+How many HI plant species have been extirpated from one or more islands?
+
+```{r}
+extrp_wild <- filter(PEP, island_designation == "PEP-EXTIRPATED" |
+                       island_designation == "PEP-EXTIRPATED?")
+length(unique(extrp_wild$species))
+```
+
+And the distribution among species and islands?
+
+```{r}
+spXis_tab <- table(extrp_wild$species, extrp_wild$distribution)
+colSums(spXis_tab)
+sort(rowSums(spXis_tab), decreasing = TRUE)
+```
+
+Now let's join the PEP table with counties data to get an idea of how many
+species are not covered by PEP:
+
+```{r}
+hi_cnt <- filter(cnt_occ, STATE == "Hawaii")
+pep_miss <- setdiff(unique(hi_cnt$SCI), PEP$species)
+length(pep_miss)
+```
+
+So more are missing than are covered. How many have 5y reviews and what is the 
+distribution of those review dates?
+
+```{r}
+pep_miss_5y <- filter(fiveyr_table, fiveyr_table$Species %in% pep_miss)
+pep_miss_5y$Date <- as.Date(pep_miss_5y$Date)
+p <- qplot(
+  data = pep_miss_5y, 
+  x = pep_miss_5y$Date, 
+  geom = "histogram", 
+  bins = 9
+)
+plotly::ggplotly(p)
+```
+
+# Post manual checks
+
+```{r }
+dist <- filter(ext_5yr, true_positive == "T") %>% 
+  distinct(Species, .keep_all = TRUE) %>%
+  filter(!is.na(Date))
+
+comments <- ext_5yr %>%
+  distinct(Species, comment, .keep_all = TRUE)
+comments$comment %>%
+  table() %>% 
+  sort(decreasing = TRUE)
+
+# geography of extinction
+ext_geo <- left_join(dist, cnt_occ, by = c("Species" = "SCI"))
+ext_geo_state <- distinct(ext_geo, Species, STATE, .keep_all = TRUE)
+ext_geo$co_st <- paste0(ext_geo$NAME, ", ", ext_geo$STATE)
+ext_geo_st_co <- distinct(ext_geo, Species, co_st, .keep_all = TRUE)
+ext_state_cnt <- table(ext_geo_state$STATE) %>% 
+  sort(decreasing = TRUE) %>%
+  as_data_frame()
+names(ext_state_cnt) <- c("state", "n_extinct")
+table(ext_geo_st_co$co_st) %>% sort(decreasing = TRUE) %>% head(15)
+
+# add map...
+
+```
+
+# recovery potential
+
+```{r echo=FALSE}
+patts <- c(
+  "potential for recovery",
+  "recovery potential"
+)
+
+proc_file <- function(f) {
+  cat(paste("\nProcessing:", basename(f), "\n"))
+  text <- readLines(f) %>% str_replace_all("[ ]{2,}", " ") %>% tolower()
+  print(nchar(paste(text, collapse = "")))
+  res <- data_frame(file = NA, patt = NA, doc = NA, mats = NA)
+  for(i in 1:length(patts)) {
+    mat <- grep(x = text, pattern = patts[i], value = TRUE)
+    mat <- mat[mat != ""]
+    if(length(mat) > 0) print(mat)
+    nhit <- length(mat)
+    if(nhit > 0) {
+      resi <- data_frame(file = rep(f, nhit), 
+                         doc = rep(basename(f), nhit),
+                         patt = rep(i, nhit), 
+                         mats = mat)
+    } else {
+      resi <- data_frame(file = f, patt = i, doc = basename(f), mats = NA)
+    }
+    res <- rbind(res, resi)
+  }
+  return(res)
+}
+
+potent <- mclapply(fils, proc_file, mc.cores = 3, mc.preschedule = FALSE)
+stat_potent <- bind_rows(potent) %>% 
+  filter(!is.na(file)) %>% 
+  filter(!is.na(mats)) %>% 
+  distinct(doc, mats, .keep_all = TRUE)
+
+low_potent <- filter(
+  stat_potent, 
+  grepl(stat_potent$mats, 
+        pattern = "low recovery potential|low potential (of|for) recovery")) %>%
+  left_join(low_potent, fiveyr_table, by = "doc")
+length(unique(hi_potent$Species))
+
+hi_potent <- filter(
+  stat_potent, 
+  grepl(
+    stat_potent$mats, 
+    pattern = "high recovery potential|high potential (of|for) recovery")
+  ) %>%
+  left_join(hi_potent, fiveyr_table, by = "doc")
+length(unique(hi_potent$Species))
+
+rr2$RPN_num <- str_replace_all(rr2$RPN, "C$", "")
+rr2$RPN_conflict <- str_detect(rr2$RPN, "C$")
+table(rr2$RPN_num)
+
+low_rec_pot_BR <- filter(rr2, RPN_num %in% c(4,5,6,10,11,12,16,17,18))
+hi_rec_pot_BR <- filter(rr2, !(RPN_num %in% c(4,5,6,10,11,12,16,17,18)))
+rr2$recov_potential <- ifelse(
+  rr2$RPN_num %in% c(4,5,6,10,11,12,16,17,18),
+  "low", "high"
+)
+rr2$threat_deg <- ifelse(
+  rr2$RPN_num %in% c(1:6),
+  "high",
+  ifelse(rr2$RPN_num %in% c(7:12),
+         "medium",
+         "low")
+)
+qplot(data = rr2, x = recov_potential, geom = "bar") +
+  facet_grid(. ~ threat_deg)
+
+HT_LP <- filter(rr2, threat_deg == "high" & recov_potential == "low")
+HT_LP <- left_join(HT_LP, cnt_occ, by = c("Scientific_Name" = "SCI"))
+
+HT_LP_st <- HT_LP %>% distinct(Scientific_Name, STATE, .keep_all = TRUE)
+st_HT_LP <- table(HT_LP_st$STATE) %>% sort(decreasing = TRUE) %>%
+  as_data_frame()
+names(st_HT_LP) <- c("state", "n_HT_LP")
+
+st_n_spp <- distinct(cnt_occ, SCI, STATE, .keep_all = TRUE)
+st_n_spp <- table(st_n_spp$STATE) %>% 
+  sort(decreasing = TRUE) %>% 
+  as_data_frame()
+names(st_n_spp) <- c("state", "n_species")
+
+st_HT_LP <- left_join(st_n_spp, st_HT_LP, by = "state")
+st_HT_LP$pct_HT_LP <- st_HT_LP$n_HT_LP / st_HT_LP$n_species
+st_HT_LP <- arrange(st_HT_LP, -pct_HT_LP)
+qnt <- quantile(st_HT_LP$pct_HT_LP, c(0.1, 0.25, 0.75, 0.9), na.rm = TRUE)
+
+st_HT_LP <- left_join(st_HT_LP, ext_state_cnt, by = "state")
+st_HT_LP$pct_ext <- st_HT_LP$n_extinct / st_HT_LP$n_species
+st_HT_LP <- arrange(st_HT_LP, -pct_ext)
+
+states <- rgdal::readOGR(
+  path.expand("~/Work/Repos/us-maps/geojson/state.geo.json"),
+  "OGRGeoJSON"
+)
+tmp_sthtlp <- st_HT_LP
+names(tmp_sthtlp)[1] <- "NAME10"
+states <- merge(states, tmp_sthtlp)
+
+n_sp_bins <- c(0, 10, 25, 50, 100, 150, 200, 300, 500)
+n_HTLP_bins <- c(0, 5, 10, 15, 20, 30, 40, 50, 100, Inf)
+n_ex_bins <- c(0, 1, 2, 3, 5, 24)
+pc_ex_bins <- c(0, 
+  quantile(
+    states$pct_ext, 
+    c(0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95), 
+    na.rm = TRUE
+  ),
+  max(states$pct_ext)
+)
+pc_HTLP_bins <- c(0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
+n_sp_pal <- colorBin("YlOrRd", domain = states$n_species, bins = n_sp_bins)
+n_HTLP_pal <- colorBin("YlOrRd", domain = states$n_HT_LP, bins = n_HTLP_bins)
+pc_HTLP_pal <- colorBin("YlOrRd", domain = states$pct_HT_LP, bins = pc_HTLP_bins)
+n_ex_pal <- colorBin("YlOrRd", domain = states$n_extinct, bins = n_ex_bins)
+pc_ex_pal <- colorBin("YlOrRd", domain = states$pct_ext, bins = pc_ex_bins)
+
+# labels <- sprintf(
+#   "<strong>%s</strong><br/>%g species",
+#   states$NAME10, states$n_species
+# ) %>% lapply(htmltools::HTML)
+
+# labels <- sprintf(
+#   "<strong>%s</strong><br/>%g extinct spp.",
+#   states$NAME10, states$n_extinct
+# ) %>% lapply(htmltools::HTML)
+
+# labels <- sprintf(
+#   "<strong>%s</strong><br/>%g listed species<br/>%g extinct species<br/>%g pct. 'extinct'",
+#   states$NAME10, states$n_species, states$n_extinct, 100*round(states$pct_ext, 4)
+# ) %>% lapply(htmltools::HTML)
+
+labels <- sprintf(
+  "<strong>%s</strong><br/>%g listed species<br/>%g hi risk, low recov.<br/>%g pct. hi risk, low rec.",
+  states$NAME10, states$n_species, states$n_HT_LP, 100*round(states$pct_HT_LP, 3)
+) %>% lapply(htmltools::HTML)
+
+leaflet(tmp_shp) %>%
+  setView(-110, 45, 3) %>%
+  # addProviderTiles("Stamen.TonerLite") %>%
+  addPolygons(
+    # fillColor = ~n_sp_pal(n_species),
+    # fillColor = ~n_ex_pal(n_extinct),
+    fillColor = ~pc_HTLP_pal(pct_HT_LP),
+    weight = 1,
+    opacity = 1,
+    color = "white",
+    fillOpacity = 0.7,
+    highlight = highlightOptions(
+      weight = 2,
+      color = "#666",
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE),
+    label = labels,
+    labelOptions = labelOptions(
+      style = list("font-weight" = "normal", padding = "3px 8px"),
+      textsize = "15px",
+      direction = "auto")
+  ) %>% 
+  addLegend(
+    # pal = n_sp_pal, 
+    # pal = n_ex_pal, 
+    # pal = pc_ex_pal, 
+    pal = pc_HTLP_pal, 
+    # values = ~n_species, 
+    # values = ~n_extinct, 
+    values = ~pct_HT_LP, 
+    opacity = 0.7, 
+    title = NULL,
+    position = "bottomright"
+  )
+
+# setdiff(low_rec_pot_BR$Scientific_Name, low_potent$Species)
+intersect(low_rec_pot_BR$Scientific_Name, hi_potent$Species) %>%
+  setdiff(low_potent$Species)
+  
+intersect(low_rec_pot_BR$Scientific_Name, low_potent$Species) 
+
+## How many 'extinct' species are high recovery likelihood...
+RTC_ex <- filter(rr2, Scientific_Name %in% dist$Species)
+qplot(x = as.factor(as.numeric(RTC_ex$RPN_num))) +
+  labs(x = "RPN") +
+  ggthemes::theme_hc()
+RTC_high_rec <- filter(RTC_ex, RPN_num == 2 | RPN_num == 3)
+```
+
+# Status: populations, threats
+```{r}
+patts <- c(
+  # "have decline",
+  "population[s]* [A-Za-z0-9 -]*(declin|decreas|deteriorat|shr[ia]nk|reduc)",
+  "population[s]* [A-Za-z0-9 -]*(unchang|same|continu|remain)",
+  "population[s]* [A-Za-z0-9 -]*(grow|increas|improv|better|expand|recover)",
+  "threat[s]* [A-Za-z0-9 -]*(declin|decreas|deteriorat|shr[ia]nk|remov|reduc)",
+  "threat[s]* [A-Za-z0-9 -]*(unchang|same|continu|remain)",
+  "threat[s]* [A-Za-z0-9 -]*(grow|increas|worse|expand)",
+  "habitat (destruct|loss|modif)* [A-Za-z0-9 -]*(declin|decreas|deteriorat|shrink)",
+  "habitat (destruct|loss|modif)* [A-Za-z0-9 -]*(unchang|same|continu)",
+  "habitat (destruct|loss|modif)* [A-Za-z0-9 -]*(grow|increas|worse|expand)",
+  "overutilization [A-Za-z0-9 -]*(declin|decreas|deteriorat|shrink)",
+  "overutilization [A-Za-z0-9 -]*(unchang|same|continu)",
+  "overutilization [A-Za-z0-9 -]*(grow|increas|worse|expand)",
+  "disease [A-Za-z0-9 -]*(declin|decreas|deteriorat|shrink)",
+  "disease [A-Za-z0-9 -]*(unchang|same|continu)",
+  "disease [A-Za-z0-9 -]*(grow|increas|worse|expand)"
+)
+
+proc_file <- function(f) {
+  cat(paste("\nProcessing:", basename(f), "\n"))
+  text <- readLines(f) %>% 
+    paste(collapse = " ") %>%
+    str_replace_all("[ ]{2,}", " ") %>%
+    tokenize_sentences(lowercase = TRUE, simplify = TRUE)
+  res <- data_frame(file = NA, patt = NA, doc = NA, mats = NA)
+  for(i in 1:length(patts)) {
+    mat <- grep(x = text, pattern = patts[i], value = TRUE)
+    mat <- mat[mat != ""]
+    if(length(mat) > 0) print(mat)
+    nhit <- length(mat)
+    if(nhit > 0) {
+      resi <- data_frame(file = rep(f, nhit), 
+                         doc = rep(basename(f), nhit),
+                         patt = rep(i, nhit), 
+                         mats = mat)
+    } else {
+      resi <- data_frame(file = f, patt = i, doc = basename(f), mats = NA)
+    }
+    res <- rbind(res, resi)
+  }
+  return(res)
+}
+
+# status_2 <- mclapply(fils[1:10], proc_file, mc.cores = 3, mc.preschedule = FALSE)
+status <- mclapply(fils, proc_file, mc.cores = 3, mc.preschedule = FALSE)
+status_df <- bind_rows(status) %>% 
+  filter(!is.na(file)) %>% 
+  filter(!is.na(mats)) %>% 
+  distinct(doc, mats, .keep_all = TRUE)
+sum1 <- table(status_df$doc, status_df$patt)
+colSums(sum1)
+
+disease <- filter(status_df, patt %in% c(13,14,15))
+habitat <- filter(status_df, patt %in% c(7,8,9))
+```
+
+## OpenNLP version
+
+This uses OpenNLP for sentence tokenization, which seems to handle some 
+abbreviations better (e.g., "U.S.")...but the results are almost identical. This
+version does not work with `parallel::mclapply` for unknown reasons, so will 
+uses the `tokenizers` functions...
+
+```{r openNLP_status}
+# convert_text_to_sentences <- function(text, lang = "en") {
+#   sentence_token_annotator <- Maxent_Sent_Token_Annotator(language = lang)
+#   text <- as.String(text)
+#   sentence.boundaries <- annotate(text, sentence_token_annotator)
+#   sentences <- text[sentence.boundaries]
+#   return(sentences)
+# }
+# 
+# proc_file <- function(f) {
+#   cat(paste("\nProcessing:", basename(f), "\n"))
+#   text <- readLines(f) %>% 
+#     paste(collapse = " ") %>%
+#     str_replace_all("[ ]{2,}", " ") #%>%
+#     # tokenize_sentences(lowercase = TRUE, simplify = TRUE)
+#   text <-  convert_text_to_sentences(text) %>% tolower()
+#   res <- data_frame(file = NA, patt = NA, doc = NA, mats = NA)
+#   for(i in 1:length(patts)) {
+#     mat <- grep(x = text, pattern = patts[i], value = TRUE)
+#     mat <- mat[mat != ""]
+#     if(length(mat) > 0) print(mat)
+#     nhit <- length(mat)
+#     if(nhit > 0) {
+#       resi <- data_frame(file = rep(f, nhit), 
+#                          doc = rep(basename(f), nhit),
+#                          patt = rep(i, nhit), 
+#                          mats = mat)
+#     } else {
+#       resi <- data_frame(file = f, patt = i, doc = basename(f), mats = NA)
+#     }
+#     res <- rbind(res, resi)
+#   }
+#   return(res)
+# }
+# 
+# status_onlp <- lapply(fils, proc_file)
+# status_onlp_df <- bind_rows(status_onlp) %>% 
+#   filter(!is.na(file)) %>% 
+#   filter(!is.na(mats)) %>% 
+#   distinct(doc, mats, .keep_all = TRUE)
+# 
+# sum1_onlp <- table(status_onlp_df$doc, status_onlp_df$patt)
+# colSums(sum1_onlp)
+```
+
+# Habitat and threats from IUCN (extinct species)
+
+```{r IUCN_hab_threat_extinct}
+ext_iucn_habitat <- lapply(
+  unique(ext_geo$Species), 
+  rl_habitats, 
+  key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
+)
+for(i in 1:length(ext_iucn_habitat)) {
+  ext_iucn_habitat[[i]]$result$species <- ext_iucn_habitat[[i]]$name
+}
+ext_iucn_habitat_dfs <- lapply(ext_iucn_habitat, `[[`, 2)
+ext_iucn_habitat_df <- bind_rows(ext_iucn_habitat_dfs)
+table(ext_iucn_habitat_df$habitat) %>% sort(decreasing = TRUE)
+
+ext_iucn_threats <- lapply(
+  unique(ext_geo$Species), 
+  rl_threats, 
+  key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
+)
+for(i in 1:length(ext_iucn_threats)) {
+  ext_iucn_threats[[i]]$result$species <- ext_iucn_threats[[i]]$name
+}
+ext_iucn_threats_dfs <- lapply(ext_iucn_threats, `[[`, 2)
+ext_iucn_threats_df <- bind_rows(ext_iucn_threats_dfs)
+table(ext_iucn_threats_df$title) %>% sort(decreasing = TRUE)
+no_iucn_threat <- filter(ext_iucn_threats_df, is.na(title))
+no_thr_syn <- lapply(
+  unique(no_iucn_threat$species),
+  rl_synonyms, 
+  key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
+)
+no_thr_syn_res <- lapply(no_thr_syn, `[[`, 3) %>% bind_rows()
+
+ext_iucn_thr2 <- lapply(
+  unique(no_thr_syn_res$accepted_name), 
+  rl_threats, 
+  key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
+)
+for(i in 1:length(ext_iucn_thr2)) {
+  ext_iucn_thr2[[i]]$result$species <- ext_iucn_thr2[[i]]$name
+}
+ext_iucn_thr2_dfs <- lapply(ext_iucn_thr2, `[[`, 2)
+ext_iucn_thr2_df <- bind_rows(ext_iucn_thr2_dfs)
+
+#TODO: combine thr2 with threats_df to fill in the blanks for three species
+
+extinct_spp_iucn_threats <- ext_iucn_threats_df %>%
+  select(8, 1:7) %>%
+  rbind(ext_iucn_thr2_df) %>% 
+  filter(!(species %in% no_thr_syn_res$synonym))
+
+```
+
+
+
+

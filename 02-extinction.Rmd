@@ -72,14 +72,7 @@ simple_tab <- function(v, vname = "var", useNA = "always", n = 10) {
 <div class="abstract">
 _Abstract_
 
-The success of the Endangered Species Act is often measured by comparing the
-number of species declared extinct to the number of listed species, which 
-indicates success on the order of 99%. Here we check that measure against the 
-discussions of extinction by the Fish and Wildlife Service and the National 
-Marine Fisheries Service by computationally mining five-year status reviews. We
-find that 80 (~5%) ESA-listed species are known to be or are likely to be 
-extinct. The extinctions are concentrated in Hawaii and a swath that extends
-from Mississippi to Virginia. 
+The success of the Endangered Species Act is often measured by comparing the number of species declared extinct to the number of listed species, which indicates success on the order of 99%. Here we check that measure against the discussions of extinction by the Fish and Wildlife Service and the National Marine Fisheries Service by computationally mining five-year status reviews. We find 81 (~5%) ESA-listed species are known to be or are likely to be extinct. Importantly, the list includes many species whose extinction would likely not have been prevented by any law, including the ESA. The extinctions are concentrated in Hawaii and a swath that extends from Mississippi to Virginia. The habitats associated with extinction were tropical / subtropical forests (Hawaii) and wetlands, especially riverine systems. Invasive species were the dominant threat to extinct species, driven by the threats to Hawaiian extinct species. These results should inform how we discuss the successes of the ESA and the law's limitations.
 </div>
 
 The extinction crisis of the modern era was a key motvation for the ESA: the 
@@ -93,15 +86,15 @@ saved by the ESA, which is a great accomplishment.
 
 But there are a few problems with using the number of species "delisted due to 
 extinction" as the metric of success. First, it ignores the key goal of species
-recovery and uses the lower bar of mere existence as success. But we normally
-don't want to argue that plants and animals known only to exist in captivity 
-count as successes. Success is wildlife out in their homes on the landscape.
+recovery and uses the lower bar of mere existence as success. But we don't want 
+to argue that plants and animals known only to exist in captivity count as 
+successes. Success is wildlife out in their homes on the landscape.
 
 Second, we know that the ten delisted species are simply the ones formally
 accepted as extinct. But proving extinction is tough; we have too many examples
 where a species hadn't been seen for many, many years--multiple decades and even
 over a century--only to be rediscovered. For such reasons, declarations 
-of extinction are a rare occurrence. At the same time, we often have a  darn 
+of extinction are a rare occurrence. At the same time, we often have a very 
 good idea that well-documented species are really-and-truly extinct. We hold off
 on the declarations of extinction and the removal of protections because of the
 small but real chance that one or a few individuals still exist. 
@@ -115,13 +108,13 @@ lesser degree. Getting a better handle on the number of species thought to be
 extinct rather than relying on the number delisted due to extinction is an 
 important first step in thoroughly understanding the effectiveness of the ESA.
 
-## Identifying possible/probably extinctions
+## Identifying possible/probable extinctions
 
 The first question we address is how many species are extinct. Pinning
-down that number is tricky because extinction is fundamentally hard because 
-proving absence is so difficult. Rather than a declaration of extinct,
-we set the bar at a level of experts' statements that they think the species
-is or may be extinct. We mined the text of all 
+down that number is tricky because extinction is fundamentally hard: one can't
+prove absence the same way we prove presence. Rather than a declaration of 
+extinct, we set the bar at a level of experts' statements that they think the 
+species is or may be extinct. We mined the text of all 
 [~1,400 five-year status reviews, totalling >30,000  pages](https://www.fws.gov/southeast/endangered-species-act/five-year-reviews/), 
 we need to find a relatively [small number of phrases](#phrase_patterns) that indicate extinction. 
 
@@ -194,7 +187,13 @@ kable(paste("-", t4$mats))
 #
 ext_5yr <- readRDS("data/extinct_manual_check_2017-09-05.rds")
 
-extinct <- filter(ext_5yr, true_positive == "T")
+extinct <- filter(ext_5yr, true_positive == "T") %>%
+             filter(is.na(comment) | 
+                      comment == "HI birds" |
+                      comment == "uncertain status")
+
+ext_wild <- filter(ext_5yr, comment == "extinct in wild") %>%
+  distinct(Species)
 ```
 
 Perusing the pattern matches, we find (as expected) both true positives (i.e.,
@@ -204,13 +203,14 @@ but since re-discovered). To ensure we are working with the right numbers, we
 manually checked each 5-year review with an extinction phrase match to remove
 the false-positives.
 
-From the manually filtered data we find `r length(unique(extinct$Species))`
+From the manually filtered data we find `r length(unique(extinct$Species)) - 1`
 species that are believed extinct to some greater or lesser degree, plus the 
 snail genus _Achatinella_ (see below). 
 
 <div class="cols-2">
 ```{r echo=FALSE}
 spp <- sort(unique(extinct$Species[!is.na(extinct$Species)]))
+n_ext <- length(spp) + 10 + 33
 half <- ceiling(length(spp) / 2)
 first <- spp[1:half]
 secnd <- spp[(half+1):length(spp)]
@@ -219,8 +219,12 @@ kable(secnd)
 ```
 </div>
 
+(Note this does not include species that are extinct in the wild, but often
+number just a few in propagation or captivity. We identified 
+`r length(ext_wild[[1]])` such species in our scans - _`r paste(ext_wild[[1]], collapse=", ")`_ - but the number is likely higher.)
+
 <div class="main-result">
-Together with the ten species that have been [delisted due to extinction](https://ecos.fws.gov/ecp0/reports/delisting-report), **85 (`r 100*round(85/(dim(tne)[1] + 41), 2)`%) current or formerly ESA-listed species are thought, to some greater or lesser extent, to be extinct.**
+Together with the ten species that have been [delisted due to extinction](https://ecos.fws.gov/ecp0/reports/delisting-report), **`r n_ext` (`r 100*round(n_ext/(dim(tne)[1] + 41), 2)`%) current or formerly ESA-listed species are thought, to some greater or lesser extent, to be extinct.**
 </div>
 
 Most of the extinct species are from Hawaii, with many that are plants
@@ -555,15 +559,12 @@ Among the `r length(unique(acha$species))` _Achatinella_, current publicly
 available information indicates
 `r length(acha$believed_extinct[acha$believed_extinct == "T"])` are extinct:
 
-<div class="cols-2">
 ```{r echo=F}
 ext_ach <- filter(acha, believed_extinct == "T")
-as_data_frame(ext_ach$species) %>%
-  kable() %>%
+select(ext_ach, c(1,2,9)) %>%
+  kable(align = c("l", "c", "c")) %>%
   kable_styling(bootstrap_options = "hover")
 ```
-</div>
-
 
 
 </div>
