@@ -1,0 +1,275 @@
+## No more "99% effective"
+
+It may be catchy and convenient to use, but the 99/1% figures are almost certainly wrong. If only for the sake of integrity, we should not use these numbers to argue for the success of the ESA. Sometimes the statistic is rephrased as "only 1% of listed species have been declared extinct," which is technically true but deliberately misleading. (And one can even argue that it is "disrespectful" to those species that have likely gone extinct to not recognize the loss.) The community could use 95/5% to avoid this ethical issue, but we think that even framing success in terms of percent extant misses the point of truly conserving (recovering) species. 
+
+Ethics aside, we repeatedly run into problems with using the 99% figure: why are more resources needed if the ESA is so darn effective? 
+
+While there is clearly a balance to be struck between optimistic and pessimistic messaging, we note that the environmental movement that gave us the ESA and other laws was driven by Highlighting real successes where they exist is part of the ESA defensive strategy, but there also needs to be a more realistic treatment of extinction and decline.
+
+_Alternatives_
+
+- Because Congress has neglected their duty to properly fund the ESA, some 5% of species may have already been lost. It's time to fully fund the strongest conservation law in the world to prevent more extinctions and achieve real conservation.
+
+- Some 95% of ESA-listed species are still with us, but much more needs to be done to protect those at the brink and secure them all.
+
+- Opponents of the ESA use the low number of recovered species to argue for weakening the law rather than an opportunity to rise above the measly 10% of required funding they provide. And because of their negligence, as many as 5% of listed species may have already been lost. 
+
+- Try telling your mechanic that they must make your car run and you'll be happy to give them 10% of the cost of repairs. Now try telling professional conservationists they must not only save species from extinction but also recover them, but they must do it with 10% of the resources required.
+
+
+### Honest expectations
+
+In addition to getting a better estimate of the number of likely extinctions, this analysis points to the importance of recalibrating expectations about what the ESA (or any law) can achieve. Far too often, the message is that ESA listing in and of itself secures species. But the ESA could not have done much for most of the ~90 likely extinct species we identified: invasive species*, hurricanes, and rock slides don't care about the law, even though they are common (likely) causes of extinction of ESA-listed species. The distinction between this class of threat and those like ongoing overharvest and habitat destruction is an important nuance. By not addressing these nuances directly, expectations for the ESA have been set too high in the public consciousness. On one hand, most people don't care about details like this; if they have any interest, they just want to know species are protected. On the other hand, ESA opponents perpetuate and exacerbate the problem by contributing to completely unrealistic expectations for the law (like saying the ESA is a failure because so few species have been recovered). Fortunately, we can address this by 
+
+\* The invasive species issue isn't that humans aren't involved--we are--it's that the scale of the problem is so large as to mostly be unmanageable. 
+
+<div class="aside-box">
+In addition to the data mining to find likely extinct species and the basic categorization of causes of extinction, we performed three simple analyses about where and why species have been lost. We chose not to include them in the main body of the analyses for conciseness, but they are included in the [Appendices](#appendices).
+</div>
+
+
+## Appendices {#appendices}
+
+<!-- <div id="box_1", class="aside-box"> -->
+### Appendix A. Additional PEP data
+
+In addition to the extinctions, the PEP data highlight the problem of extirpations: `r length(unique(extrp_wild$species))` PEP species have been (or probably have been) extirpated from one or more of the islands. First, the number of species extirpated, by island:
+
+<div class="narrow-tab">
+```{r echo=FALSE}
+spXis_tab <- table(extrp_wild$species, extrp_wild$distribution)
+colnames(spXis_tab) <- str_replace_all(colnames(spXis_tab), "`", "")
+colSums(spXis_tab) %>% 
+  sort(decreasing = TRUE) %>% 
+  head(10) %>% 
+  as_data_frame() %>%
+  rename(extirpations = value) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "hover")
+```
+</div>
+
+Alternatively, the species with the most extirpations from Hawaiian islands.
+
+<div class="narrow-tab">
+```{r echo = FALSE}
+rowSums(spXis_tab) %>%
+  sort(decreasing = TRUE) %>% 
+  head(10) %>%
+  as_data_frame() %>%
+  rename(extirpations = value) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "hover")
+```
+</div>
+
+```{r echo=FALSE}
+hi_cnt <- filter(cnt_occ, STATE == "Hawaii")
+pep_miss <- setdiff(unique(hi_cnt$SCI), PEP$species)
+```
+
+The PEP data adds depth to our understanding of extinctions and extirpations among Hawaiian plants, but PEP does not cover `r length(pep_miss)` ESA-listed plants. For these species in particular it is important for FWS to track species status. One way that is done is with ESA-mandated five-year reviews of species status. Here is the distribution of years in which five-year reviews were done for the `r length(pep_miss)` PEP-missing species:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+pep_miss_5y <- filter(fiveyr_table, fiveyr_table$Species %in% pep_miss)
+pep_miss_5y$age <- as.numeric(Sys.Date() - as.Date(pep_miss_5y$Date))
+date_tab <- as.Date(pep_miss_5y$Date) %>%
+  lubridate::year() %>%
+  table() %>%
+  as_data_frame() %>%
+  rename(year = '.')
+p <- ggplot(date_tab, aes(x = year, y = n)) +
+  geom_histogram(stat = "identity") +
+  labs(x = "", y = "count") +
+  ggthemes::theme_hc()
+plotly::ggplotly(p)
+```
+
+There are `r length(pep_miss_5y$age)` non-PEP species with 5-year reviews available, and of those reviews, `r sum(pep_miss_5y$age > (365*5))` are out-of-date (i.e., more than five years old). 
+<!-- </div> -->
+
+### Appendix B. Geography of extinction
+
+Where have extinctions occurred? Hawaii, of course, tops the list, but where are the other species? Below we focus on the 36 species found across our document scans because of the Hawaiian tilt of the other lists.
+
+```{r state_level, echo = FALSE, fig.cap="States with the most (likely) extinctions."}
+w_co <- left_join(extinct, cnt_occ, by = c("Species" = "SCI"))
+spp_w_st <- distinct(w_co, Species, STATE)
+dist <- filter(ext_5yr, true_positive == "T") %>% 
+  distinct(Species, .keep_all = TRUE) %>%
+  filter(!is.na(Date))
+
+ext_geo <- left_join(dist, cnt_occ, by = c("Species" = "SCI"))
+ext_geo_state <- distinct(ext_geo, Species, STATE, .keep_all = TRUE)
+ext_state_cnt <- table(ext_geo_state$STATE) %>% 
+  sort(decreasing = TRUE) %>%
+  as_data_frame()
+
+states <- readRDS(file = "data/state-simple.geo.json")
+names(ext_state_cnt) <- c("NAME10", "n_extinct")
+state_ext_geo <- sp::merge(states, ext_state_cnt)
+
+n_ex_bins <- c(0, 1, 2, 3, 5, 24)
+n_ex_pal <- colorBin(
+  "YlOrRd", 
+  domain = state_ext_geo$n_extinct, 
+  bins = n_ex_bins
+)
+
+labels <- sprintf(
+  "<strong>%s</strong><br/>%g extinct species",
+  state_ext_geo$NAME10, state_ext_geo$n_extinct
+) %>% lapply(htmltools::HTML)
+
+leaflet(state_ext_geo) %>%
+  setView(-110, 45, 3) %>%
+  addProviderTiles("Stamen.TonerLite") %>%
+  addPolygons(
+    fillColor = ~n_ex_pal(n_extinct),
+    weight = 1,
+    opacity = 1,
+    color = "white",
+    fillOpacity = 0.7,
+    highlight = highlightOptions(
+      weight = 2,
+      color = "#666",
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE),
+    label = labels,
+    labelOptions = labelOptions(
+      style = list("font-weight" = "normal", padding = "3px 8px"),
+      textsize = "15px",
+      direction = "auto")
+  ) %>% 
+  addLegend(
+    pal = n_ex_pal,
+    values = ~n_extinct,
+    opacity = 0.7, 
+    title = NULL,
+    position = "bottomright"
+  )
+```
+
+<div class="narrow-tab">
+```{r echo=FALSE}
+names(ext_state_cnt) <- c("state", "n_extinct")
+table(ext_geo_state$STATE) %>%
+  sort(decreasing = TRUE) %>%
+  as_data_frame() %>%
+  rename("state" = "Var1") %>%
+  head() %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "hover")
+```
+</div>
+
+Again, Hawaii clearly shows up with the most species, but the swath from Mississippi to Virginia stands out too. Most of these species are mussels and fish, so the issue may be related to the problems apparent in this (albeit old) [Clean Water Act 303(d) impaired waters](https://www.epa.gov/tmdl).
+
+In addition to the state-level patterns of extinction, we can use counties of occurrence to evaluate patterns of the geography of extinction. The ten counties with the most extinct species include:
+
+<div class="narrow-tab">
+```{r county_level, echo = FALSE, fig.cap="Ten counties with the greatest number of likely extinct, ESA-listed species. Excludes 'NA' entries for species lacking county data."}
+ext_geo$co_st <- paste0(ext_geo$NAME, ", ", ext_geo$STATE)
+ext_geo_st_co <- distinct(ext_geo, Species, co_st, .keep_all = TRUE)
+table(ext_geo_st_co$co_st) %>%
+  sort(decreasing = TRUE) %>%
+  as_data_frame() %>%
+  filter(Var1 != "NA, NA") %>%
+  rename(`State, County` = Var1) %>%
+  head(10) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "hover")
+```
+</div>
+
+As expected, Hawaiian counties top the list, followed by Guam, then southern Appalachian counties in Tennessee, Virginia, and Kentucky. Thus, although Alabama and Mississippi have more extinct, listed species than these states, those species are (were) more concentrated in Tennessee, Virginia, and Kentucky.
+
+### Appendix C. Common threats and habitats
+
+In the main text we gave a cursory overview of our observations on the causes of extinction because they provide important context in thinking about the ESA and extinction. At the same time, we caution that those are observations rather than rigorous analyses. However, we also analyzed [IUCN data](http://apiv3.iucnredlist.org/) on species' habitats and threats. That is, given the list of likely extinct species, we would like to know what they have in common that might inform prioritization efforts that can stem future extinctions. We include the analyses below, but note that the data are incomplete enough that this should be considered preliminary rather than conclusive.
+
+We used data available through the [IUCN's Red List database]() for habitats and threats.
+
+**Habitats**
+
+```{r echo=FALSE}
+# ext_iucn_habitat <- lapply(
+#   unique(ext_geo$Species), 
+#   rl_habitats, 
+#   key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
+# )
+# for(i in 1:length(ext_iucn_habitat)) {
+#   ext_iucn_habitat[[i]]$result$species <- ext_iucn_habitat[[i]]$name
+# }
+# ext_iucn_habitat_dfs <- lapply(ext_iucn_habitat, `[[`, 2)
+# ext_iucn_habitat_df <- bind_rows(ext_iucn_habitat_dfs)
+# saveRDS(ext_iucn_habitat_df, file = "data/extinct_iucn_habitat.rds")
+ext_iucn_habitat_df <- readRDS("data/extinct_iucn_habitat.rds")
+table(ext_iucn_habitat_df$habitat, useNA = "always") %>% 
+  sort(decreasing = TRUE) %>%
+  as_data_frame() %>%
+  rename(habitat = Var1) %>%
+  head(10) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "hover")
+```
+
+The most common defined habitats for the extinct species parallels those species' geography: subtropical / tropical forests of Hawaii where species such as the _Achatinella_ snails, various plants, and birds lived. Inland wetlands, in particular the rivers, streams, and creeks inhabited by likely extinct mussels and fishes, are the second major group. Last, notice the most common habitat type is actually "NA." This points to a limitation of the IUCN's database, incomplete information.
+
+**Threats**
+
+```{r echo=FALSE}
+# ext_iucn_threats <- lapply(
+#   unique(ext_geo$Species), 
+#   rl_threats, 
+#   key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
+# )
+# for(i in 1:length(ext_iucn_threats)) {
+#   ext_iucn_threats[[i]]$result$species <- ext_iucn_threats[[i]]$name
+# }
+# ext_iucn_threats_dfs <- lapply(ext_iucn_threats, `[[`, 2)
+# ext_iucn_threats_df <- bind_rows(ext_iucn_threats_dfs)
+# table(ext_iucn_threats_df$title) %>% sort(decreasing = TRUE)
+# no_iucn_threat <- filter(ext_iucn_threats_df, is.na(title))
+# no_thr_syn <- lapply(
+#   unique(no_iucn_threat$species),
+#   rl_synonyms, 
+#   key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
+# )
+# no_thr_syn_res <- lapply(no_thr_syn, `[[`, 3) %>% bind_rows()
+# 
+# ext_iucn_thr2 <- lapply(
+#   unique(no_thr_syn_res$accepted_name), 
+#   rl_threats, 
+#   key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
+# )
+# for(i in 1:length(ext_iucn_thr2)) {
+#   ext_iucn_thr2[[i]]$result$species <- ext_iucn_thr2[[i]]$name
+# }
+# ext_iucn_thr2_dfs <- lapply(ext_iucn_thr2, `[[`, 2)
+# ext_iucn_thr2_df <- bind_rows(ext_iucn_thr2_dfs)
+# 
+# extinct_spp_iucn_threats <- ext_iucn_threats_df %>%
+#   select(8, 1:7) %>%
+#   rbind(ext_iucn_thr2_df) %>% 
+#   filter(!(species %in% no_thr_syn_res$synonym))
+# saveRDS(extinct_spp_iucn_threats, file = "data/extinct_iucn_threats.rds")
+extinct_spp_iucn_threats <- readRDS("data/extinct_iucn_threats.rds")
+
+simple_tab(extinct_spp_iucn_threats$title, vname = "title")
+```
+
+```{r echo=FALSE}
+simple_tab(extinct_spp_iucn_threats$code, vname = "code")
+extinct_spp_iucn_threats$simple_code <- extinct_spp_iucn_threats$code %>%
+  str_split(pattern = "\\.") %>%
+  lapply(FUN = `[[`, 1) %>%
+  unlist()
+cur_dat <- extinct_spp_iucn_threats$simple_code %>%
+  table() %>%
+  as_data_frame() %>%
+  plyr::rename(replace = c("." = "threat_code")) %>%
+  arrange(-n)
+```
+

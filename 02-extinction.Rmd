@@ -14,10 +14,12 @@ editor_options:
 options(knitr.table.format = "html")
 library(plyr)
 
+library(bsplus)
 library(dplyr)
 library(ecosscraper)
 library(fuzzyjoin)
 library(ggplot2)
+library(htmltools)
 library(kableExtra)
 library(knitr)
 library(leaflet)
@@ -29,6 +31,9 @@ library(RPostgreSQL)
 library(stringr)
 library(tokenizers)
 library(us.geonames)
+
+use_bs_tooltip()
+use_bs_popover()
 
 # read in some data
 cnt_occ <- readRDS("data/ESA_county_occurrences.rds")
@@ -193,7 +198,7 @@ select(ext_ach, c(1,2,9)) %>%
 
 ### Plant Extinction Prevention (PEP) Program
 
-The [Plant Extinction Prevention (PEP) Program](http://www.pepphi.org/) works exhaustively to monitor and conserve Hawaiian plants. They also provide more up-to-date data on the status of many imperiled plants than FWS documents, and should be considered authoritative for PEP species. We downloaded the 2017-03-16 list from PEP's website then used Adobe's online extraction service to render the tables as a spreadsheet for processing. To begin, we have a high-level overview of how PEP classifies the covered species:
+The [Plant Extinction Prevention (PEP) Program](http://www.pepphi.org/) works exhaustively to monitor and conserve Hawaiian plants. They also provide more up-to-date data on the status of many imperiled plants than FWS documents, and should be considered authoritative for those ~300 species. To begin, we have a high-level overview of how PEP classifies the covered species:
 
 <div class="narrow-tab">
 ```{r echo=FALSE}
@@ -209,7 +214,7 @@ table(PEP$island_designation) %>%
 ```
 </div> 
 
-The numbers from PEP indicate the scale of the challenge Hawaiian plants face. Note the refinement of extinct in the wild vs. extinct from the planet, which we will return to later. But first, what are the PEP species that are thought extinct? ("NL" = not listed)
+The numbers from PEP indicate the scale of the challenge Hawaiian plants face: nearly 300 species covered in this extinction prevention program, and dozens that are extinct or extirpated. Note the refinement of extinct in the wild vs. extinct from the planet, which we will return to later. But first, what are the PEP species that are thought extinct? ("NL" = not listed)
 
 <div class="narrow-tab">
 ```{r pep_ext_table, echo = FALSE, message = FALSE}
@@ -226,9 +231,7 @@ kable(pep_extinct) %>%
 ```
 </div>
 
-The PEP tabulation places 20 Hawaiian plants they have worked with in the extinct (?\*) category. Of these, eleven are listed (endangered), and their listing rules or (just released) five-year reviews suggest extinction. 
-
-\* _Appropriately, PEP uses "?" to denote that they are not declaring species extinct or that there is uncertainty._
+The PEP tabulation places 20 Hawaiian plants they have worked with in the EXTINCT?`r tags$sup(tags$span(style="background-color:red;color:#fff;border-radius:2px;padding:1px 5px", "NOTE (click)")) %>% bs_embed_popover(title = "NOTE", content = "Appropriately, PEP uses '?' to denote that they are not declaring species extinct or that there is uncertainty.")` category. Of these, eleven are listed (endangered), and their listing rules or recently released five-year reviews suggest extinction. 
 
 ### Declared extinct
 
@@ -253,66 +256,41 @@ n_ext <- length(spp) + length(dl_ext$species) + length(ext_ach$species) +
          length(pep_ext_list$species)
 ```
 
-<div class="main-result">
-Available data indicate **`r n_ext` (`r 100*round(n_ext/dim(tne)[1], 3)`%) current or formerly ESA-listed species are thought to be extinct.**
-</div>
-
 ### Extinct in the wild
 
-This list of likely extinct species does not include species that are extinct in the wild. Even though we do not include those species in the tally, we note that these often number just a few individuals in propagation or captivity--very close to complete extinction. We identified `r length(ext_wild[[1]])` such species in our scans - _`r paste(ext_wild[[1]], collapse=", ")`_ - but the number is likely higher. For example, the PEP data indicated 14 Hawaiian plants that are extinct in the wild.
+We have focused on species that are completely extinct, but not those that are extinct in the wild. Even though we do not include those species in the tally, we note that these often number just a few individuals in propagation or captivity--very close to complete extinction. We identified `r length(ext_wild[[1]])` such species in our scans--_`r paste(ext_wild[[1]], collapse=", ")`_--but the number is likely higher. For example, the PEP data indicated 14 Hawaiian plants that are extinct in the wild.
+
+<div class="main-result">
+**Available data indicate `r n_ext` (`r 100*round(n_ext/dim(tne)[1], 3)`%) current or formerly ESA-listed species are thought to be extinct.** This is substantially higher than commonly recognized.
+</div>
 
 ## Causes of extinction
 
-The causes of extinction may be complex, often with no single mechanism responsible for the loss of a species. The Passenger Pigeon is a well-known example of this [complexity](http://www.audubon.org/magazine/may-june-2014/why-passenger-pigeon-went-extinct): rather than being lost solely to hunting, or solely to habitat loss, the species was likely lost through a combination of those factors plus an interaction with the species' social behavior. We anticipate this complexity is common and _determining_ the cause of extinction requires extensive data to critically evaluate. With often scant published information, we unfortunately can't determine the causes of extinction of all `r n_ext` species identified above. However, during the course of this project, we noticed three basic categories of causes\*:
+In the course of compiling the list of likely extinct species, we read about the causes of these species' extinction. At this time we can't "conclusively" determine the causes of extinction of all `r n_ext` species identified above, but we think it is worth noting three basic categories of extinction causes we identified, from most to least frequent`r tags$sup(tags$span(style="background-color:red;color:#fff;border-radius:2px;padding:1px 5px", "NOTE (click)")) %>% bs_embed_popover(title = "NOTE", content = "We do not include counts of the number of species for each category because the available information is too spotty to ensure the counts are accurate; instead, we simply order by our best estimate of frequency. This list should be considered an initial observation worthy of further investigation rather than the final word on the causes of ESA extinctions.")`:
 
 <div id="cause_list">
-1. _Invasive species_\*\* were the factor we noticed most commonly for extinction, driven by the _Achatinella_ snails and Hawaiian plants. The culprits include feral hogs, predatory snails, avian malaria, and a multitude of plants. Regardless the mechanism by which the invasives affected the listed species--trampling, predation, disease, competition--the end result was the same: species driven to extinction, or so compromised that they became susceptible to factors such as natural "accidents."
+1. _Invasive species_ were the factor we noticed most commonly in discussions of extinction, with the frequency driven by the _Achatinella_ snails and Hawaiian plants. The culprits include feral hogs, predatory snails, avian malaria, and a multitude of plants. Regardless the mechanism by which the invasives affected the listed species--trampling, predation, disease, competition--the end result was the same: species driven to extinction, or so compromised that they became susceptible to factors such as natural "accidents."
 
-2. _Natural accidents_ were a surprisingly common theme in the narratives of extinction. _Hibiscadelphus woodii_, for example, was only ever known from four plants, three of which were taken out by a rockslide and the fourth died some years later. (Efforts were made to propagate the species, but were unsuccessful.) Several plants are believed to have been lost to Hurricane Iniki in 1992, including _Dubautia kenwoodii_. These sorts of natural accidents (and other stochastic events) are the reason why small population size is considered a significant extinction risk, for example, under the [five listing factors of the ESA](http://www.nmfs.noaa.gov/pr/listing/). We are unable to determine the extent to which invasive species or "unnatural processes" increased the susceptibility to natural accidents, but those situations seem likely.
+2. _Natural accidents_ were a surprisingly common theme in the narratives of extinction. _Hibiscadelphus woodii_, for example, was only ever known from four plants, three of which were taken out by a rockslide and the fourth died some years later. (Efforts were made to propagate the species, but were unsuccessful.) Several plants are believed to have been lost to Hurricane Iniki in 1992, including _Dubautia kenwoodii_. These sorts of natural accidents (and other stochastic events) are the reason why small population size is considered a significant extinction risk, for example, under the [five listing factors of the ESA](http://www.nmfs.noaa.gov/pr/listing/). We are unable to determine the extent to which invasive species or "unnatural processes" increased the susceptibility to natural accidents, but those are likely situations.
 
-3. _"Unnatural processes"_ were characteristic for some of the commonly recognized species on the list, like the eastern cougar and the Eskimo Curlew, which almost certainly fell victim to overharvest. Others, like the Maryland darter and Bachman's Warbler, most likely fell victim to anthropogenic habitat destruction and degradation. Similarly, several mussels in the Southeast we likely driven to extinction by a combination of abiotic habitat modification such as silt and pollution and (perhaps) biotic changes such as loss of fish hosts. Even though these types of processes were likely responsible for some extinctions, what stood out was how they have been relatively infrequent.
+3. _"Unnatural processes"_ were characteristic for some of the commonly recognized species on the list. The eastern cougar and the Eskimo Curlew almost certainly fell victim to overharvest. Others, like the Maryland darter and Bachman's Warbler, most likely fell victim to anthropogenic habitat destruction and degradation. Similarly, several mussels in the Southeast we likely driven to extinction by a combination of abiotic habitat modification such as silt and pollution and (perhaps) biotic changes such as loss of fish hosts. Even though these types of processes were likely responsible for some extinctions, what stood out was how they have been relatively infrequent.
 </div>
 
-\* We do not include counts of the number of species for each category because the available information is too spotty to ensure the counts are accurate. For example, if a document doesn't mention accidents as part of a species' demise, does it mean they weren't responsible or was it just not important enough to mention? Rather than inviting problems by presenting numbers that may be biased, we simply describe the categories.
+The pattern of these causes raises some important questions about whether the ESA--or any law--could have prevented many of these likely extinctions. How can laws that typically focus on prohibiting harmful acts be used to address well-established and harmful invasive species and accidents? By extension, does messaging that ignores the different types of threats and the different mechanisms that might ameliorate the threats set unrealistic expectations for the ESA? 
 
-\*\* Most invasives arrive by human transport, but we separate this cause from the "unnatural processes" of point 3 because the threat is generally not active act like those processes. Additionally, invasive species may be an ultimate cause even when the proximate cause of loss is a natural accident.
-
-<div class="aside-box">
-In addition to the data mining to find likely extinct species and the basic categorization of causes of extinction, we performed three simple analyses about where and why species have been lost. We chose not to include them in the main body of the analyses for two reasons. First, the available data are incomplete for many species and attempting to fill in the blanks is beyond the scope of the present contribution. Second, the very high concentration of extinct species from Hawaii means the geographic and threats analyses are overwhelmed by that signal. For completeness, however, we include those analyses in the [Appendices](#appendices).
+<div class="main-result">
+**These observations raise the question of whether any law can deal with some of the most common causes of (past) extinctions, and how we message law's capabilities.**
 </div>
 
 ## Conclusion
 
-Our analysis points to two broad conclusions. First, the community that works on and defends the ESA should not continue using the "99% effective" phrase to discuss the law's success: the data indicate the number is likely closer to 95%. Second, the community should discuss causes of extinction--and likely the common threats to extant listed species--in proportion to their frequency and importance, which doesn't seem ...not sure where this is going...
+Our analysis points to two basic conclusions about messaging the effectiveness and expectation of the ESA. First, conservationists should not continue using the "99% effective" phrase to discuss the ESA's success: the data indicate the percent extant is likely closer to 95%. Sometimes the statistic is rephrased as "only 1% of listed species have been declared extinct," which is technically true but deliberately misleading. (And one can even argue that it is "disrespectful" to those species that have likely gone extinct to not recognize the loss.) However, even with the better estimate or the technically correct phrasing, we believe that the ESA and conservation are better served by not focusing on the lower bar of percent of species extant. Instead, we believe that a focus on recovery and conservation well-above near-extinction.
 
-### No more "99% effective"
-
-It may be catchy and convenient to use, but the 99/1% figures are almost certainly wrong. If only for the sake of integrity, we should not use these numbers to argue for the success of the ESA. Sometimes the statistic is rephrased as "only 1% of listed species have been declared extinct," which is technically true but deliberately misleading. (And one can even argue that it is "disrespectful" to those species that have likely gone extinct to not recognize the loss.) The community could use 95/5% to avoid this ethical issue, but we think that even framing success in terms of percent extant misses the point of truly conserving (recovering) species. 
-
-Ethics aside, we repeatedly run into problems with using the 99% figure: why are more resources needed if the ESA is so darn effective? 
-
-While there is clearly a balance to be struck between optimistic and pessimistic messaging, we note that the environmental movement that gave us the ESA and other laws was driven by Highlighting real successes where they exist is part of the ESA defensive strategy, but there also needs to be a more realistic treatment of extinction and decline.
-
-_Alternatives_
-
-- Because Congress has neglected their duty to properly fund the ESA, some 5% of species may have already been lost. It's time to fully fund the strongest conservation law in the world to prevent more extinctions and achieve real conservation.
-
-- Some 95% of ESA-listed species are still with us, but much more needs to be done to protect those at the brink and secure them all.
-
-- Opponents of the ESA use the low number of recovered species to argue for weakening the law rather than an opportunity to rise above the measly 10% of required funding they provide. And because of their negligence, as many as 5% of listed species may have already been lost. 
-
-- Try telling your mechanic that they must make your car run and you'll be happy to give them 10% of the cost of repairs. Now try telling professional conservationists they must not only save species from extinction but also recover them, but they must do it with 10% of the resources required.
-
-
-### Honest expectations
-
-In addition to getting a better estimate of the number of likely extinctions, this analysis points to the importance of recalibrating expectations about what the ESA (or any law) can achieve. Far too often, the message is that ESA listing in and of itself secures species. But the ESA could not have done much for most of the ~90 likely extinct species we identified: invasive species*, hurricanes, and rock slides don't care about the law, even though they are common (likely) causes of extinction of ESA-listed species. The distinction between this class of threat and those like ongoing overharvest and habitat destruction is an important nuance. By not addressing these nuances directly, expectations for the ESA have been set too high in the public consciousness. On one hand, most people don't care about details like this; if they have any interest, they just want to know species are protected. On the other hand, ESA opponents perpetuate and exacerbate the problem by contributing to completely unrealistic expectations for the law (like saying the ESA is a failure because so few species have been recovered). Fortunately, we can address this by 
-
-\* The invasive species issue isn't that humans aren't involved--we are--it's that the scale of the problem is so large as to mostly be unmanageable. 
+Second, conservationists should discuss causes of extinction--and threats to extant listed species--in proportion to their frequency and importance rather than just focusing on the manageable threats. The latter may make for simple success stories, but distorts expectations of what the ESA can do. This is part-and-parcel with messaging that implies simple listing a species under the ESA is sufficient to ensure its conservation. Prior to working on this analysis, we would have guessed overharvesting and habitat destruction were the primary causes of extinction of ESA-listed species...and we would have been wrong.
 
 ### Coda
 
-Conducting this analysis hasn't been the most uplifting exercise: not much good news in here. But as we cautioned from the beginning, declaring extinction is fundamentally hard and is a step taken only with great care. There is no better example to illustrate why we must take care--and why we do not think the 80 species identified here should be declared extinct until species experts deem it appropriate--than _Melicope quadrangularis_. This Hawaiian tree was discovered in 1909, then "lost" until 1991, when a population was found again. Then Hurricane Iniki struck in 1992 and for 20 years it was thought that species had been wiped out because that single population had been destroyed. When we first did this analysis in mid-2017, the most recent 5-year review (2010) indicated this history and we identified it as a likely extinct species in our list. But the [2017 5-year review](https://ecos.fws.gov/docs/five_year_review/doc5340.pdf), which we reviewed as part of finalizing this analysis, presented hopeful new information: a stand of four _M. quadrangularis_ was found in another location in 2013, followed by other populations in subsequent years. Efforts to find and propagate the species are continuing by PEP, which is great news. 
+Conducting this analysis hasn't been the most uplifting exercise: not much good news in here. But as we cautioned from the beginning, declaring extinction is fundamentally hard and is a step taken only with great care. There is no better example to illustrate why we must take care--and why we do not think the 89 species identified here should be declared extinct until species experts deem it appropriate--than _Melicope quadrangularis_. This Hawaiian tree was discovered in 1909, then "lost" until 1991, when a population was found again. Then Hurricane Iniki struck in 1992 and for 20 years it was thought that species had been wiped out because that single population had been destroyed by the hurricane. When we first did this analysis in mid-2017, the most recent 5-year review (2010) indicated this history and we identified it as a likely extinct species in our list. But the [2017 5-year review](https://ecos.fws.gov/docs/five_year_review/doc5340.pdf), which we reviewed as part of finalizing this analysis, presented hopeful new information: a stand of four _M. quadrangularis_ was found in another location in 2013, followed by other populations in subsequent years. Efforts to find and propagate the species are continuing by PEP, which is great news. 
 
 
 ## Methods {#methods}
@@ -343,255 +321,12 @@ kable(paste("-", t4$mats))
 ```
 </div>
 
-Perusing these example pattern matches, we find - as expected - both true positives (i.e., the meaning of the matched sentence comports with the idea we have in mind) and false positives (e.g., local extinctions or species previously believed extinct but since re-discovered). 
+Perusing these example pattern matches, we find - as expected - both true positives (i.e., the meaning of the matched sentence comports with the idea we have in mind) and false positives (e.g., local extinctions or species previously believed extinct but since re-discovered). We manually checked each 5-year review with an extinction phrase match to remove the false-positives. 
 
-Next, we manually checked each 5-year review with an extinction phrase match to remove the false-positives. The _Achatinella_ snails are taxonomically complex and all of their five-year reviews have been combined in a [single document](https://ecos.fws.gov/docs/five_year_review/doc3903.pdf), so we compiled their results manually for all species. In addition, we checked the NatureServe Explorer and IUCN Red List web sites for any additional information for the snails. 
+The _Achatinella_ snails are taxonomically complex and all of their five-year reviews have been combined in a [single document](https://ecos.fws.gov/docs/five_year_review/doc3903.pdf), so we compiled their results manually for all species. In addition, we checked the NatureServe Explorer and IUCN Red List web sites for any additional information for the snails. 
+
+We downloaded the 2017-03-16 list from PEP's website then used Adobe's online extraction service to render the tables as a spreadsheet for processing. We checked the PEP species against the list of threatened and endangered species to remove non-listed species from consideration. We also checked available documents (e.g., the _Federal Register_) to get a better picture of why/how the species went extinct.
 
 We downloaded the list of delisted species from FWS's [ECOS website](https://ecos.fws.gov/ecp0/reports/delisting-report) in January, 2018, and included only those species for which the "Reason Delisted" was Extinct.
 
-
-## Appendices {#appendices}
-
-<!-- <div id="box_1", class="aside-box"> -->
-### Appendix A. Additional PEP data
-
-In addition to the extinctions, the PEP data highlight the problem of extirpations: `r length(unique(extrp_wild$species))` PEP species have been (or probably have been) extirpated from one or more of the islands. First, the number of species extirpated, by island:
-
-<div class="narrow-tab">
-```{r echo=FALSE}
-spXis_tab <- table(extrp_wild$species, extrp_wild$distribution)
-colnames(spXis_tab) <- str_replace_all(colnames(spXis_tab), "`", "")
-colSums(spXis_tab) %>% 
-  sort(decreasing = TRUE) %>% 
-  head(10) %>% 
-  as_data_frame() %>%
-  rename(extirpations = value) %>%
-  kable() %>%
-  kable_styling(bootstrap_options = "hover")
-```
-</div>
-
-Alternatively, the species with the most extirpations from Hawaiian islands.
-
-<div class="narrow-tab">
-```{r echo = FALSE}
-rowSums(spXis_tab) %>%
-  sort(decreasing = TRUE) %>% 
-  head(10) %>%
-  as_data_frame() %>%
-  rename(extirpations = value) %>%
-  kable() %>%
-  kable_styling(bootstrap_options = "hover")
-```
-</div>
-
-```{r echo=FALSE}
-hi_cnt <- filter(cnt_occ, STATE == "Hawaii")
-pep_miss <- setdiff(unique(hi_cnt$SCI), PEP$species)
-```
-
-The PEP data adds depth to our understanding of extinctions and extirpations among Hawaiian plants, but PEP does not cover `r length(pep_miss)` ESA-listed plants. For these species in particular it is important for FWS to track species status. One way that is done is with ESA-mandated five-year reviews of species status. Here is the distribution of years in which five-year reviews were done for the `r length(pep_miss)` PEP-missing species:
-
-```{r echo=FALSE, message=FALSE, warning=FALSE}
-pep_miss_5y <- filter(fiveyr_table, fiveyr_table$Species %in% pep_miss)
-pep_miss_5y$age <- as.numeric(Sys.Date() - as.Date(pep_miss_5y$Date))
-date_tab <- as.Date(pep_miss_5y$Date) %>%
-  lubridate::year() %>%
-  table() %>%
-  as_data_frame() %>%
-  rename(year = '.')
-p <- ggplot(date_tab, aes(x = year, y = n)) +
-  geom_histogram(stat = "identity") +
-  labs(x = "", y = "count") +
-  ggthemes::theme_hc()
-plotly::ggplotly(p)
-```
-
-There are `r length(pep_miss_5y$age)` non-PEP species with 5-year reviews available, and of those reviews, `r sum(pep_miss_5y$age > (365*5))` are out-of-date (i.e., more than five years old). 
-<!-- </div> -->
-
-### Appendix B. Geography of extinction
-
-Where have extinctions occurred? Hawaii, of course, tops the list, but where are the other species? Below we focus on the 36 species found across our document scans because of the Hawaiian tilt of the other lists.
-
-```{r state_level, echo = FALSE, fig.cap="States with the most (likely) extinctions."}
-w_co <- left_join(extinct, cnt_occ, by = c("Species" = "SCI"))
-spp_w_st <- distinct(w_co, Species, STATE)
-dist <- filter(ext_5yr, true_positive == "T") %>% 
-  distinct(Species, .keep_all = TRUE) %>%
-  filter(!is.na(Date))
-
-ext_geo <- left_join(dist, cnt_occ, by = c("Species" = "SCI"))
-ext_geo_state <- distinct(ext_geo, Species, STATE, .keep_all = TRUE)
-ext_state_cnt <- table(ext_geo_state$STATE) %>% 
-  sort(decreasing = TRUE) %>%
-  as_data_frame()
-
-states <- readRDS(file = "data/state-simple.geo.json")
-names(ext_state_cnt) <- c("NAME10", "n_extinct")
-state_ext_geo <- sp::merge(states, ext_state_cnt)
-
-n_ex_bins <- c(0, 1, 2, 3, 5, 24)
-n_ex_pal <- colorBin(
-  "YlOrRd", 
-  domain = state_ext_geo$n_extinct, 
-  bins = n_ex_bins
-)
-
-labels <- sprintf(
-  "<strong>%s</strong><br/>%g extinct species",
-  state_ext_geo$NAME10, state_ext_geo$n_extinct
-) %>% lapply(htmltools::HTML)
-
-leaflet(state_ext_geo) %>%
-  setView(-110, 45, 3) %>%
-  addProviderTiles("Stamen.TonerLite") %>%
-  addPolygons(
-    fillColor = ~n_ex_pal(n_extinct),
-    weight = 1,
-    opacity = 1,
-    color = "white",
-    fillOpacity = 0.7,
-    highlight = highlightOptions(
-      weight = 2,
-      color = "#666",
-      dashArray = "",
-      fillOpacity = 0.7,
-      bringToFront = TRUE),
-    label = labels,
-    labelOptions = labelOptions(
-      style = list("font-weight" = "normal", padding = "3px 8px"),
-      textsize = "15px",
-      direction = "auto")
-  ) %>% 
-  addLegend(
-    pal = n_ex_pal,
-    values = ~n_extinct,
-    opacity = 0.7, 
-    title = NULL,
-    position = "bottomright"
-  )
-```
-
-<div class="narrow-tab">
-```{r echo=FALSE}
-names(ext_state_cnt) <- c("state", "n_extinct")
-table(ext_geo_state$STATE) %>%
-  sort(decreasing = TRUE) %>%
-  as_data_frame() %>%
-  rename("state" = "Var1") %>%
-  head() %>%
-  kable() %>%
-  kable_styling(bootstrap_options = "hover")
-```
-</div>
-
-Again, Hawaii clearly shows up with the most species, but the swath from Mississippi to Virginia stands out too. Most of these species are mussels and fish, so the issue may be related to the problems apparent in this (albeit old) [Clean Water Act 303(d) impaired waters](https://www.epa.gov/tmdl).
-
-In addition to the state-level patterns of extinction, we can use counties of occurrence to evaluate patterns of the geography of extinction. The ten counties with the most extinct species include:
-
-<div class="narrow-tab">
-```{r county_level, echo = FALSE, fig.cap="Ten counties with the greatest number of likely extinct, ESA-listed species. Excludes 'NA' entries for species lacking county data."}
-ext_geo$co_st <- paste0(ext_geo$NAME, ", ", ext_geo$STATE)
-ext_geo_st_co <- distinct(ext_geo, Species, co_st, .keep_all = TRUE)
-table(ext_geo_st_co$co_st) %>%
-  sort(decreasing = TRUE) %>%
-  as_data_frame() %>%
-  filter(Var1 != "NA, NA") %>%
-  rename(`State, County` = Var1) %>%
-  head(10) %>%
-  kable() %>%
-  kable_styling(bootstrap_options = "hover")
-```
-</div>
-
-As expected, Hawaiian counties top the list, followed by Guam, then southern Appalachian counties in Tennessee, Virginia, and Kentucky. Thus, although Alabama and Mississippi have more extinct, listed species than these states, those species are (were) more concentrated in Tennessee, Virginia, and Kentucky.
-
-### Appendix C. Common threats and habitats
-
-In the main text we gave a cursory overview of our observations on the causes of extinction because they provide important context in thinking about the ESA and extinction. At the same time, we caution that those are observations rather than rigorous analyses. However, we also analyzed [IUCN data](http://apiv3.iucnredlist.org/) on species' habitats and threats. That is, given the list of likely extinct species, we would like to know what they have in common that might inform prioritization efforts that can stem future extinctions. We include the analyses below, but note that the data are incomplete enough that this should be considered preliminary rather than conclusive.
-
-We used data available through the [IUCN's Red List database]() for habitats and threats.
-
-**Habitats**
-
-```{r echo=FALSE}
-# ext_iucn_habitat <- lapply(
-#   unique(ext_geo$Species), 
-#   rl_habitats, 
-#   key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
-# )
-# for(i in 1:length(ext_iucn_habitat)) {
-#   ext_iucn_habitat[[i]]$result$species <- ext_iucn_habitat[[i]]$name
-# }
-# ext_iucn_habitat_dfs <- lapply(ext_iucn_habitat, `[[`, 2)
-# ext_iucn_habitat_df <- bind_rows(ext_iucn_habitat_dfs)
-# saveRDS(ext_iucn_habitat_df, file = "data/extinct_iucn_habitat.rds")
-ext_iucn_habitat_df <- readRDS("data/extinct_iucn_habitat.rds")
-table(ext_iucn_habitat_df$habitat, useNA = "always") %>% 
-  sort(decreasing = TRUE) %>%
-  as_data_frame() %>%
-  rename(habitat = Var1) %>%
-  head(10) %>%
-  kable() %>%
-  kable_styling(bootstrap_options = "hover")
-```
-
-The most common defined habitats for the extinct species parallels those species' geography: subtropical / tropical forests of Hawaii where species such as the _Achatinella_ snails, various plants, and birds lived. Inland wetlands, in particular the rivers, streams, and creeks inhabited by likely extinct mussels and fishes, are the second major group. Last, notice the most common habitat type is actually "NA." This points to a limitation of the IUCN's database, incomplete information.
-
-**Threats**
-
-```{r echo=FALSE}
-# ext_iucn_threats <- lapply(
-#   unique(ext_geo$Species), 
-#   rl_threats, 
-#   key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
-# )
-# for(i in 1:length(ext_iucn_threats)) {
-#   ext_iucn_threats[[i]]$result$species <- ext_iucn_threats[[i]]$name
-# }
-# ext_iucn_threats_dfs <- lapply(ext_iucn_threats, `[[`, 2)
-# ext_iucn_threats_df <- bind_rows(ext_iucn_threats_dfs)
-# table(ext_iucn_threats_df$title) %>% sort(decreasing = TRUE)
-# no_iucn_threat <- filter(ext_iucn_threats_df, is.na(title))
-# no_thr_syn <- lapply(
-#   unique(no_iucn_threat$species),
-#   rl_synonyms, 
-#   key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
-# )
-# no_thr_syn_res <- lapply(no_thr_syn, `[[`, 3) %>% bind_rows()
-# 
-# ext_iucn_thr2 <- lapply(
-#   unique(no_thr_syn_res$accepted_name), 
-#   rl_threats, 
-#   key = "b14503ec6ef80c6c07ca33baf728efdbc2f10fc6373d779f0d7efb8b98049ee7"
-# )
-# for(i in 1:length(ext_iucn_thr2)) {
-#   ext_iucn_thr2[[i]]$result$species <- ext_iucn_thr2[[i]]$name
-# }
-# ext_iucn_thr2_dfs <- lapply(ext_iucn_thr2, `[[`, 2)
-# ext_iucn_thr2_df <- bind_rows(ext_iucn_thr2_dfs)
-# 
-# extinct_spp_iucn_threats <- ext_iucn_threats_df %>%
-#   select(8, 1:7) %>%
-#   rbind(ext_iucn_thr2_df) %>% 
-#   filter(!(species %in% no_thr_syn_res$synonym))
-# saveRDS(extinct_spp_iucn_threats, file = "data/extinct_iucn_threats.rds")
-extinct_spp_iucn_threats <- readRDS("data/extinct_iucn_threats.rds")
-
-simple_tab(extinct_spp_iucn_threats$title, vname = "title")
-```
-
-```{r echo=FALSE}
-simple_tab(extinct_spp_iucn_threats$code, vname = "code")
-extinct_spp_iucn_threats$simple_code <- extinct_spp_iucn_threats$code %>%
-  str_split(pattern = "\\.") %>%
-  lapply(FUN = `[[`, 1) %>%
-  unlist()
-cur_dat <- extinct_spp_iucn_threats$simple_code %>%
-  table() %>%
-  as_data_frame() %>%
-  plyr::rename(replace = c("." = "threat_code")) %>%
-  arrange(-n)
-```
 

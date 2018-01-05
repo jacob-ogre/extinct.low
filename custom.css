@@ -1,3 +1,7 @@
+body {
+  line-height: 1.5;
+}
+
 p, li {
   font-size: larger;
   font-family: "Open Sans";
@@ -191,11 +195,18 @@ td, th {
 .aside-box {
   background-color: #E8EAF6;
   border-radius: 3px;
+  font-size: 0.9em;
+  margin: auto;
   margin-bottom: 30px;
   padding-left: 5%;
   padding-top: 20px;
   padding-bottom: 20px;
   padding-right: 5%;
+  width: 75%;
+}
+
+.aside-box > p {
+  margin-bottom: 0;
 }
 
 .caption {
@@ -205,3 +216,10 @@ td, th {
 #cause_list > ol > li > p {
   font-size: 1em;
 }
+
+.footnote > p {
+  font-family: serif !important;
+  font-size: 0.9em;
+  margin-left: 20px;
+}
+
