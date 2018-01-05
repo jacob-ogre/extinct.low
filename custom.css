@@ -201,3 +201,7 @@ td, th {
 .caption {
   margin-bottom: 0;
 }
+
+#cause_list > ol > li > p {
+  font-size: 1em;
+}

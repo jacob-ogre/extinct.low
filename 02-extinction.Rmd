@@ -73,18 +73,18 @@ simple_tab <- function(v, vname = "var", useNA = "always", n = 10) {
 <div class="abstract">
 **_Abstract_**
 
-The success of the Endangered Species Act (ESA) is often measured by comparing the number of species declared extinct to the number of listed species, which indicates success on the order of 99%. Here we check that measure against the discussions of extinction by the Fish and Wildlife Service and the National Marine Fisheries Service by mining five-year status reviews and other relevant data. The review suggests 90 (~5%) domestic ESA-listed species are known or are likely to be extinct, plus at least six and likely more that are extinct in the wild. We are unable to provide a rigorous analysis of causes of extinction, but identify three broad categories of common causes: invasive species, natural accidents, and overexploitation / habitat destruction. We discuss how these results inform discussions of the successes of the ESA and the law's limitations, and close with a hopeful but cautionary tale about extinction. 
+The success of the Endangered Species Act (ESA) is often measured by comparing the number of species declared extinct to the number of listed species, which indicates success on the order of 99%. Here we check that measure against the discussions of extinction by the Fish and Wildlife Service and the National Marine Fisheries Service by mining five-year status reviews and other relevant data. The review indicates 89 (~5%) domestic ESA-listed species are known or are likely to be extinct, plus at least six and likely more that are extinct in the wild. We are unable to provide a rigorous analysis of causes of extinction, but identify three broad categories of common causes: invasive species, natural accidents, and overexploitation / habitat destruction. We discuss how these results inform messages about the successes of the ESA and the law's limitations, and close with a hopeful but cautionary tale about extinction. 
 </div>
 
 The extinction crisis of the modern era was a key motivation for the ESA: the goals of the law include preventing extinction and recovering species so they are no longer threatened with extinction. One of the ways ESA success has been measured is by comparing the number of listed species to the number that have been declared extinct and delisted. As of this writing, ten species have been removed from the list of threatened and endangered species because of extinction, and the list includes 1,660 species for approximately `r 100 - (100 * round(10 / 1660, 2))`% success.
 
-But there are at least two problems with using the number of species "delisted due to extinction" as the metric of success. First, it dismisses the key goal of species recovery and instead sets a lower bar of mere existence as success. But we don't want to argue that plants and animals known only to exist in captivity, or in such low numbers that their [ecological role](https://smile.amazon.com/Ecological-Niches-Contemporary-Interspecific-Interactions/dp/0226101800/ref=sr_1_1) is lost, count as successes. Success is wildlife out on the landscape as part of the ecological community.
+But there are at least two problems with using the number of species "delisted due to extinction" as the metric of success. First, it sets a lower bar of mere existence as success rather than keeping the higher goal of recovery. But we don't want to argue that plants and animals known only to exist in captivity, or in such low numbers that their [ecological role](https://smile.amazon.com/Ecological-Niches-Contemporary-Interspecific-Interactions/dp/0226101800/ref=sr_1_1) is lost, count as successes. Success is wildlife out on the landscape as part of the ecological community.
 
 Second, we know that the ten delisted species are just the ones that have been formally declared extinct. But proving extinction is tough: it's easy to confirm something is present, but confirming absence (of typically hard-to-find species) is fraught with problems. Did we look at the right place, at the right time, and under the right conditions and just miss it? Or is the species truly gone? The caution of declaring extinction is well-deserved: we have too many examples where a [species hadn't been seen for decades or even over three centuries](http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0022531), only to be rediscovered. And getting either extinction or rediscovery wrong can have [negative consequences for conservation](https://www.researchgate.net/publication/26879484_Caution_with_claims_that_a_species_has_been_rediscovered). For such reasons, declarations of extinction are a rare occurrence. At the same time, we often have a very good idea that well-documented species are extinct, but hold off on the declarations of extinction and the removal of protections because of the small chance that one or a few individuals still exist. 
 
-We have two goals in this analysis. First is to identify ESA-listed species that experts--primarily biologists with the U.S. Fish and Wildlife Service (FWS) and National Marine Fisheries Service (NMFS; collectively, the Services)--have good reason to believe are extinct. We use a [combination of computational and manual curation](#methods) and data from other highly regarded sources, including IUCN and the [Plant Extinction Prevention Program](http://pepphi.org) to create this list. _Declaring_ extinction may not be warranted for most of these species, but the professionals have indicated that extinction is likely to some greater or lesser degree. Second, we summarize the likely causes of these species' extinction. This is not a rigorous analysis because of various uncertainties, but it provides an important (and somewhat surprising) backdrop for interpreting the extinction data. We discuss the implications of our results with respect to how conservationists discuss the effectiveness of the ESA.
+We have two goals in this analysis. First, we identify ESA-listed species that experts--primarily biologists with the U.S. Fish and Wildlife Service (FWS) and National Marine Fisheries Service (NMFS; collectively, the Services)--have good reason to believe are extinct. We use a [combination of computational and manual curation](#methods) and data from other highly regarded sources, including IUCN and the [Plant Extinction Prevention Program](http://pepphi.org), to create this list. _Declaring_ extinction may not be warranted for most of these species, but the professionals have indicated that extinction is likely to some greater or lesser degree. Second, we summarize the likely causes of these species' extinction. This is not a rigorous analysis because of various uncertainties, but it provides an important (and somewhat surprising) backdrop for interpreting the extinction data. We discuss the implications of our results with respect to how conservationists discuss the effectiveness of the ESA.
 
-## Possible/probable extinctions
+## Extinctions
 
 ```{r terms_1, echo = FALSE}
 src <- "~/Downloads/five_year_review"
@@ -146,11 +146,13 @@ extinct <- filter(ext_5yr, true_positive == "T") %>%
                       comment == "HI birds" |
                       comment == "uncertain status") %>%
              filter(Species != "Phyllostegia mollis") %>%
-             filter(Species != "Melicope quadrangularis")
+             filter(Species != "Melicope quadrangularis") %>%
+             filter(Species != "Cyanea superba") 
 spp_ls <- unique(extinct$Species[!is.na(extinct$Species)])
 spp_ls <- c(spp_ls, "Campephilus principalis", "Vermivora bachmanii")
 
 ext_wild <- filter(ext_5yr, comment == "extinct in wild") %>%
+  filter(Species != "Cyanea superba") %>%
   distinct(Species)
 ```
 
@@ -167,7 +169,7 @@ kable(secnd)
 ```
 </div>
 
-The list includes some well-known species, like the [eastern cougar](https://www.fws.gov/northeast/ECougar/) and the [Eskimo Curlew](https://neotropical.birds.cornell.edu/Species-Account/nb/species/eskcur/overview). But other species are much less well-known, like _Cyanea supurba_, a Hawaiian plant that was last seen in XXXXX. 
+The list includes some well-known species, like the [eastern cougar](https://www.fws.gov/northeast/ECougar/) and the [Eskimo Curlew](https://neotropical.birds.cornell.edu/Species-Account/nb/species/eskcur/overview). But other species are much less well-known, like _Cyrtandra crenata_, a Hawaiian plant that was last seen in 1947. The list also includes the only listed genus, _Achatinella_, the Oahu tree snails.
 
 ### _Achatinella_ snails {#achatinella}
 
@@ -189,7 +191,7 @@ select(ext_ach, c(1,2,9)) %>%
 ```
 </div>
 
-### PEPP
+### Plant Extinction Prevention (PEP) Program
 
 The [Plant Extinction Prevention (PEP) Program](http://www.pepphi.org/) works exhaustively to monitor and conserve Hawaiian plants. They also provide more up-to-date data on the status of many imperiled plants than FWS documents, and should be considered authoritative for PEP species. We downloaded the 2017-03-16 list from PEP's website then used Adobe's online extraction service to render the tables as a spreadsheet for processing. To begin, we have a high-level overview of how PEP classifies the covered species:
 
@@ -201,6 +203,7 @@ extrp_wild <- filter(PEP, island_designation == "PEP-EXTIRPATED" |
 table(PEP$island_designation) %>%
   as_data_frame() %>%
   rename(PEP_class = Var1) %>%
+  filter(PEP_class != "N/A") %>%
   kable() %>%
   kable_styling(bootstrap_options = "hover")
 ```
@@ -225,7 +228,7 @@ kable(pep_extinct) %>%
 
 The PEP tabulation places 20 Hawaiian plants they have worked with in the extinct (?\*) category. Of these, eleven are listed (endangered), and their listing rules or (just released) five-year reviews suggest extinction. 
 
-\* _Appropriately, PEP uses "?" to denote species for which extirpation and extinction are uncertain._
+\* _Appropriately, PEP uses "?" to denote that they are not declaring species extinct or that there is uncertainty._
 
 ### Declared extinct
 
@@ -256,35 +259,60 @@ Available data indicate **`r n_ext` (`r 100*round(n_ext/dim(tne)[1], 3)`%) curre
 
 ### Extinct in the wild
 
-Note that these numbers do not include species that are extinct in the wild, but often number just a few in propagation or captivity. We identified `r length(ext_wild[[1]])` such species in our scans - _`r paste(ext_wild[[1]], collapse=", ")`_ - but the number is likely higher. For example, the PEPP data indicated 14 Hawaiian plants that are extinct in the wild.
+This list of likely extinct species does not include species that are extinct in the wild. Even though we do not include those species in the tally, we note that these often number just a few individuals in propagation or captivity--very close to complete extinction. We identified `r length(ext_wild[[1]])` such species in our scans - _`r paste(ext_wild[[1]], collapse=", ")`_ - but the number is likely higher. For example, the PEP data indicated 14 Hawaiian plants that are extinct in the wild.
 
-Most of the extinct species are from Hawaii, with many that are plants [Box 1](#box_1) or snails. In the subsequent analyses we collapse all 31 extinct species in the genus _Achatinella_ to "_Achatinella_ spp." because they were all from the same place and faced the same threats; this should help reduce bias in our inferences.
+## Causes of extinction
 
-## Patterns of extinction
+The causes of extinction may be complex, often with no single mechanism responsible for the loss of a species. The Passenger Pigeon is a well-known example of this [complexity](http://www.audubon.org/magazine/may-june-2014/why-passenger-pigeon-went-extinct): rather than being lost solely to hunting, or solely to habitat loss, the species was likely lost through a combination of those factors plus an interaction with the species' social behavior. We anticipate this complexity is common and _determining_ the cause of extinction requires extensive data to critically evaluate. With often scant published information, we unfortunately can't determine the causes of extinction of all `r n_ext` species identified above. However, during the course of this project, we noticed three basic categories of causes\*:
 
-### Causes of extinction
+<div id="cause_list">
+1. _Invasive species_\*\* were the factor we noticed most commonly for extinction, driven by the _Achatinella_ snails and Hawaiian plants. The culprits include feral hogs, predatory snails, avian malaria, and a multitude of plants. Regardless the mechanism by which the invasives affected the listed species--trampling, predation, disease, competition--the end result was the same: species driven to extinction, or so compromised that they became susceptible to factors such as natural "accidents."
 
-The causes of extinction are often complex, with no single mechanism responsible for the loss of a species. The Passenger Pigeon is a well-known example of this complexity. Rather than being lost solely to hunting, or solely to habitat loss, the species was likely lost through a combination of those factors plus an interaction with the species' social behavior. We can't determine the causes of extinction of all `r n_ext` species identified above, but we have noticed three basic categories of causes:
+2. _Natural accidents_ were a surprisingly common theme in the narratives of extinction. _Hibiscadelphus woodii_, for example, was only ever known from four plants, three of which were taken out by a rockslide and the fourth died some years later. (Efforts were made to propagate the species, but were unsuccessful.) Several plants are believed to have been lost to Hurricane Iniki in 1992, including _Dubautia kenwoodii_. These sorts of natural accidents (and other stochastic events) are the reason why small population size is considered a significant extinction risk, for example, under the [five listing factors of the ESA](http://www.nmfs.noaa.gov/pr/listing/). We are unable to determine the extent to which invasive species or "unnatural processes" increased the susceptibility to natural accidents, but those situations seem likely.
 
-1. _Invasive species:_ Easily the most common factor for extinction by number of species--driven by the _Achatinella_ snails and Hawaiian plants--is invasive species\*. The culprits include feral hogs, predatory snails, avian malaria, and a multitude of plants. Regardless the mechanism by which the invasives affected the listed species--trampling, predation, disease, competition--the end result was the same: species driven to extinction, or so compromised that they became susceptible to factors such as natural "accidents."
+3. _"Unnatural processes"_ were characteristic for some of the commonly recognized species on the list, like the eastern cougar and the Eskimo Curlew, which almost certainly fell victim to overharvest. Others, like the Maryland darter and Bachman's Warbler, most likely fell victim to anthropogenic habitat destruction and degradation. Similarly, several mussels in the Southeast we likely driven to extinction by a combination of abiotic habitat modification such as silt and pollution and (perhaps) biotic changes such as loss of fish hosts. Even though these types of processes were likely responsible for some extinctions, what stood out was how they have been relatively infrequent.
+</div>
 
-2. _Natural "accidents":_ A surprisingly common theme in the narratives of species' demise is the role of natural accidents. _Hibiscadelphus woodii_ was only ever known from four plants, three of which were taken out by a rockslide and the fourth died some years later. (Efforts were made to propagate the species, but were unsuccessful.) Several plants are believed to have been lost to Hurricane Iniki in 1992. 
+\* We do not include counts of the number of species for each category because the available information is too spotty to ensure the counts are accurate. For example, if a document doesn't mention accidents as part of a species' demise, does it mean they weren't responsible or was it just not important enough to mention? Rather than inviting problems by presenting numbers that may be biased, we simply describe the categories.
 
-3. _"Unnatural" processes:_ Some of the commonly recognized species on the list--like the eastern cougar and the Eskimo Curlew-- almost certainly fell victim to overharvest. Others, like the Maryland darter and Bachman's Warbler, most likely fell victim to anthropogenic habitat destruction and degradation. Similarly, several mussels in the Southeast we likely driven to extinction by a combination of abiotic habitat modification such as silt and pollution and (perhaps) biotic changes such as loss of fish hosts. Even though these "unnatural" processes were likely responsible for some extinctions, what stands out from the data extraction and analysis is how they are relatively uncommon.
+\*\* Most invasives arrive by human transport, but we separate this cause from the "unnatural processes" of point 3 because the threat is generally not active act like those processes. Additionally, invasive species may be an ultimate cause even when the proximate cause of loss is a natural accident.
 
-\* Most invasives arrive by human transport, but we separate this cause from the "unnatural processes" of point 3 because the threat was not active act like those.
+<div class="aside-box">
+In addition to the data mining to find likely extinct species and the basic categorization of causes of extinction, we performed three simple analyses about where and why species have been lost. We chose not to include them in the main body of the analyses for two reasons. First, the available data are incomplete for many species and attempting to fill in the blanks is beyond the scope of the present contribution. Second, the very high concentration of extinct species from Hawaii means the geographic and threats analyses are overwhelmed by that signal. For completeness, however, we include those analyses in the [Appendices](#appendices).
+</div>
 
 ## Conclusion
 
-The community that works on and defends the ESA should not continue using the "99% effective" phrase to discuss the law's success. Our analysis indicates that the number is likely closer to 95%, but even that misses the point of recovering--truly conserving--species. Re-phrasing it as "only 1% of listed species have been declared extinct" is technically true, but is deliberately misleading. One can even argue that it is "disrespectful" to those species that have likely gone extinct to not recognize the loss. Importantly, there are strategic problems with using the 99% figure: why are more resources needed if the ESA is so effective? Like many others, we have heard this argument against additional ESA support again-and-again. Highlighting real successes where they exist is part of the ESA defensive strategy, but there also needs to be a more realistic treatment of extinction and decline.
+Our analysis points to two broad conclusions. First, the community that works on and defends the ESA should not continue using the "99% effective" phrase to discuss the law's success: the data indicate the number is likely closer to 95%. Second, the community should discuss causes of extinction--and likely the common threats to extant listed species--in proportion to their frequency and importance, which doesn't seem ...not sure where this is going...
+
+### No more "99% effective"
+
+It may be catchy and convenient to use, but the 99/1% figures are almost certainly wrong. If only for the sake of integrity, we should not use these numbers to argue for the success of the ESA. Sometimes the statistic is rephrased as "only 1% of listed species have been declared extinct," which is technically true but deliberately misleading. (And one can even argue that it is "disrespectful" to those species that have likely gone extinct to not recognize the loss.) The community could use 95/5% to avoid this ethical issue, but we think that even framing success in terms of percent extant misses the point of truly conserving (recovering) species. 
+
+Ethics aside, we repeatedly run into problems with using the 99% figure: why are more resources needed if the ESA is so darn effective? 
+
+While there is clearly a balance to be struck between optimistic and pessimistic messaging, we note that the environmental movement that gave us the ESA and other laws was driven by Highlighting real successes where they exist is part of the ESA defensive strategy, but there also needs to be a more realistic treatment of extinction and decline.
+
+_Alternatives_
+
+- Because Congress has neglected their duty to properly fund the ESA, some 5% of species may have already been lost. It's time to fully fund the strongest conservation law in the world to prevent more extinctions and achieve real conservation.
+
+- Some 95% of ESA-listed species are still with us, but much more needs to be done to protect those at the brink and secure them all.
+
+- Opponents of the ESA use the low number of recovered species to argue for weakening the law rather than an opportunity to rise above the measly 10% of required funding they provide. And because of their negligence, as many as 5% of listed species may have already been lost. 
+
+- Try telling your mechanic that they must make your car run and you'll be happy to give them 10% of the cost of repairs. Now try telling professional conservationists they must not only save species from extinction but also recover them, but they must do it with 10% of the resources required.
+
+
+### Honest expectations
 
 In addition to getting a better estimate of the number of likely extinctions, this analysis points to the importance of recalibrating expectations about what the ESA (or any law) can achieve. Far too often, the message is that ESA listing in and of itself secures species. But the ESA could not have done much for most of the ~90 likely extinct species we identified: invasive species*, hurricanes, and rock slides don't care about the law, even though they are common (likely) causes of extinction of ESA-listed species. The distinction between this class of threat and those like ongoing overharvest and habitat destruction is an important nuance. By not addressing these nuances directly, expectations for the ESA have been set too high in the public consciousness. On one hand, most people don't care about details like this; if they have any interest, they just want to know species are protected. On the other hand, ESA opponents perpetuate and exacerbate the problem by contributing to completely unrealistic expectations for the law (like saying the ESA is a failure because so few species have been recovered). Fortunately, we can address this by 
 
-* The invasive species issue isn't that humans aren't involved--we are--it's that the scale of the problem is so large as to mostly be unmanageable. 
+\* The invasive species issue isn't that humans aren't involved--we are--it's that the scale of the problem is so large as to mostly be unmanageable. 
 
 ### Coda
 
-Conducting this analysis hasn't been the most uplifting exercise: not much good news in here. But as we cautioned from the beginning, declaring extinction is fundamentally hard and is a step only taken with great care. There is no better example to illustrate why we must take care--and why we do not think the 80 species identified here should be declared extinct until species experts deem it appropriate--than _Melicope quadrangularis_. This Hawaiian tree was discovered in 1909, then "lost" until 1991, when a population was found again. Then Hurricane Iniki struck in 1992 and for 20 years it was thought that species had been wiped out because that single population had been destroyed. When we first did this analysis in mid-2017, the most recent 5-year review (2010) indicated this history and we identified it as a likely extinct species in our list. But the [2017 5-year review](https://ecos.fws.gov/docs/five_year_review/doc5340.pdf), which we reviewed as part of finalizing this analysis, presented hopeful new information: a stand of four _M. quadrangularis_ was found in another location in 2013, followed by other populations in subsequent years. Efforts to find and propagate the species are continuing by PEP, which is great news. 
+Conducting this analysis hasn't been the most uplifting exercise: not much good news in here. But as we cautioned from the beginning, declaring extinction is fundamentally hard and is a step taken only with great care. There is no better example to illustrate why we must take care--and why we do not think the 80 species identified here should be declared extinct until species experts deem it appropriate--than _Melicope quadrangularis_. This Hawaiian tree was discovered in 1909, then "lost" until 1991, when a population was found again. Then Hurricane Iniki struck in 1992 and for 20 years it was thought that species had been wiped out because that single population had been destroyed. When we first did this analysis in mid-2017, the most recent 5-year review (2010) indicated this history and we identified it as a likely extinct species in our list. But the [2017 5-year review](https://ecos.fws.gov/docs/five_year_review/doc5340.pdf), which we reviewed as part of finalizing this analysis, presented hopeful new information: a stand of four _M. quadrangularis_ was found in another location in 2013, followed by other populations in subsequent years. Efforts to find and propagate the species are continuing by PEP, which is great news. 
 
 
 ## Methods {#methods}
@@ -322,7 +350,7 @@ Next, we manually checked each 5-year review with an extinction phrase match to 
 We downloaded the list of delisted species from FWS's [ECOS website](https://ecos.fws.gov/ecp0/reports/delisting-report) in January, 2018, and included only those species for which the "Reason Delisted" was Extinct.
 
 
-## Appendices
+## Appendices {#appendices}
 
 <!-- <div id="box_1", class="aside-box"> -->
 ### Appendix A. Additional PEP data
