@@ -181,8 +181,14 @@ The list includes some well-known species, like the [eastern cougar](https://www
 ```{r echo=FALSE}
 # acha <- readxl::read_excel("data-raw/Achatinella.xlsx")
 # saveRDS(acha, file = "data/Achatinella.rds")
+# acha <- readRDS("data/Achatinella.rds")
+# acha$believed_extinct <- if_else(
+#   acha$species == "abbreviata" | acha$species == "bulimoides", 
+#   "F", acha$believed_extinct
+# )
+# acha$species <- paste("Achatinella", acha$species)
+# saveRDS(acha, file = "data/Achatinella.rds")
 acha <- readRDS("data/Achatinella.rds")
-acha$species <- paste("Achatinella", acha$species)
 ext_ach <- filter(acha, believed_extinct == "T")
 ```
 
